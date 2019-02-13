@@ -26,7 +26,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-`include "zeroriscy_config.sv"
+`include "include/zeroriscy_config.sv"
 
 import zeroriscy_defines::*;
 

@@ -26,7 +26,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-`include "zeroriscy_config.sv"
+`include "include/zeroriscy_config.sv"
 
 import zeroriscy_defines::*;
 
@@ -680,55 +680,55 @@ module zeroriscy_core
     .jump_req_o        ( dbg_jump_req       )  // set PC to new value
   );
 
-`ifndef VERILATOR
-`ifdef TRACE_EXECUTION
-  zeroriscy_tracer zeroriscy_tracer_i
-  (
-    .clk            ( clk_i                                ), // always-running clock for tracing
-    .rst_n          ( rst_ni                               ),
-
-    .fetch_enable   ( fetch_enable_i                       ),
-    .core_id        ( core_id_i                            ),
-    .cluster_id     ( cluster_id_i                         ),
-
-    .pc             ( id_stage_i.pc_id_i                   ),
-    .instr          ( id_stage_i.instr                     ),
-    .compressed     ( id_stage_i.is_compressed_i           ),
-    .id_valid       ( id_stage_i.id_valid_o                ),
-    .is_decoding    ( id_stage_i.is_decoding_o             ),
-    .is_branch      ( id_stage_i.branch_in_id              ),
-    .branch_taken   ( id_stage_i.branch_set_q              ),
-    .pipe_flush     ( id_stage_i.controller_i.pipe_flush_i ),
-    .mret_insn      ( id_stage_i.controller_i.mret_insn_i  ),
-    .ecall_insn     ( id_stage_i.controller_i.ecall_insn_i ),
-    .ebrk_insn      ( id_stage_i.controller_i.ebrk_insn_i  ),
-    .csr_status     ( id_stage_i.controller_i.csr_status_i ),
-    .rs1_value      ( id_stage_i.operand_a_fw_id           ),
-    .rs2_value      ( id_stage_i.operand_b_fw_id           ),
-
-    .lsu_value      ( data_wdata_ex                        ),
-
-    .ex_reg_addr    ( id_stage_i.regfile_waddr_mux         ),
-    .ex_reg_we      ( id_stage_i.regfile_we_mux            ),
-    .ex_reg_wdata   ( id_stage_i.regfile_wdata_mux         ),
-    .data_valid_lsu ( data_valid_lsu                       ),
-    .ex_data_addr   ( data_addr_o                          ),
-    .ex_data_req    ( data_req_o                           ),
-    .ex_data_gnt    ( data_gnt_i                           ),
-    .ex_data_we     ( data_we_o                            ),
-
-    .ex_data_wdata  ( data_wdata_o                         ),
-
-    .lsu_reg_wdata  ( regfile_wdata_lsu                    ),
-
-    .imm_u_type     ( id_stage_i.imm_u_type                ),
-    .imm_uj_type    ( id_stage_i.imm_uj_type               ),
-    .imm_i_type     ( id_stage_i.imm_i_type                ),
-    .imm_iz_type    ( id_stage_i.imm_iz_type[11:0]         ),
-    .imm_z_type     ( id_stage_i.imm_z_type                ),
-    .imm_s_type     ( id_stage_i.imm_s_type                ),
-    .imm_sb_type    ( id_stage_i.imm_sb_type               )
-  );
-`endif
-`endif
+//`ifndef VERILATOR
+//`ifdef TRACE_EXECUTION
+//  zeroriscy_tracer zeroriscy_tracer_i
+//  (
+//    .clk            ( clk_i                                ), // always-running clock for tracing
+//    .rst_n          ( rst_ni                               ),
+//
+//    .fetch_enable   ( fetch_enable_i                       ),
+//    .core_id        ( core_id_i                            ),
+//    .cluster_id     ( cluster_id_i                         ),
+//
+//    .pc             ( id_stage_i.pc_id_i                   ),
+//    .instr          ( id_stage_i.instr                     ),
+//    .compressed     ( id_stage_i.is_compressed_i           ),
+//    .id_valid       ( id_stage_i.id_valid_o                ),
+//    .is_decoding    ( id_stage_i.is_decoding_o             ),
+//    .is_branch      ( id_stage_i.branch_in_id              ),
+//    .branch_taken   ( id_stage_i.branch_set_q              ),
+//    .pipe_flush     ( id_stage_i.controller_i.pipe_flush_i ),
+//    .mret_insn      ( id_stage_i.controller_i.mret_insn_i  ),
+//    .ecall_insn     ( id_stage_i.controller_i.ecall_insn_i ),
+//    .ebrk_insn      ( id_stage_i.controller_i.ebrk_insn_i  ),
+//    .csr_status     ( id_stage_i.controller_i.csr_status_i ),
+//    .rs1_value      ( id_stage_i.operand_a_fw_id           ),
+//    .rs2_value      ( id_stage_i.operand_b_fw_id           ),
+//
+//    .lsu_value      ( data_wdata_ex                        ),
+//
+//    .ex_reg_addr    ( id_stage_i.regfile_waddr_mux         ),
+//    .ex_reg_we      ( id_stage_i.regfile_we_mux            ),
+//    .ex_reg_wdata   ( id_stage_i.regfile_wdata_mux         ),
+//    .data_valid_lsu ( data_valid_lsu                       ),
+//    .ex_data_addr   ( data_addr_o                          ),
+//    .ex_data_req    ( data_req_o                           ),
+//    .ex_data_gnt    ( data_gnt_i                           ),
+//    .ex_data_we     ( data_we_o                            ),
+//
+//    .ex_data_wdata  ( data_wdata_o                         ),
+//
+//    .lsu_reg_wdata  ( regfile_wdata_lsu                    ),
+//
+//    .imm_u_type     ( id_stage_i.imm_u_type                ),
+//    .imm_uj_type    ( id_stage_i.imm_uj_type               ),
+//    .imm_i_type     ( id_stage_i.imm_i_type                ),
+//    .imm_iz_type    ( id_stage_i.imm_iz_type[11:0]         ),
+//    .imm_z_type     ( id_stage_i.imm_z_type                ),
+//    .imm_s_type     ( id_stage_i.imm_s_type                ),
+//    .imm_sb_type    ( id_stage_i.imm_sb_type               )
+//  );
+//`endif
+//`endif
 endmodule

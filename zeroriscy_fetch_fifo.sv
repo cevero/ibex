@@ -18,7 +18,7 @@
 // Description:    Fetch fifo                                                 //
 ////////////////////////////////////////////////////////////////////////////////
 
-`include "zeroriscy_config.sv"
+`include "include/zeroriscy_config.sv"
 
 // input port: send address one cycle before the data
 // clear_i clears the FIFO for the following cycle. in_addr_i can be sent in

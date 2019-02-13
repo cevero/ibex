@@ -25,7 +25,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-`include "zeroriscy_config.sv"
+`include "include/zeroriscy_config.sv"
 
 module zeroriscy_register_file
 #(
