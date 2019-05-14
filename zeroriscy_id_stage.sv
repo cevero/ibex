@@ -43,6 +43,11 @@ module zeroriscy_id_stage
   parameter RV32E      = 0
 )
 (
+    // pull register signals
+    output logic        regfile_we_o,
+    output logic [4:0]  regfile_waddr_o,
+    output logic [31:0] regfile_wdata_o,
+
     input  logic        clk,
     input  logic        rst_n,
 
@@ -390,6 +395,19 @@ module zeroriscy_id_stage
   logic  [4:0] regfile_waddr_mux;
   //TODO: add assertion
   // Register File mux
+
+  ///////////////////////////
+  // *** inserted code *** //
+  ///////////////////////////
+
+  assign regfile_wdata_o = regfile_wdata_mux;
+  assign regfile_we_o = regfile_we_mux;
+  assign regfile_waddr_o = regfile_waddr_mux;
+
+  //////////////////////////////////
+  // *** end of inserted code *** //
+  //////////////////////////////////
+
   always_comb
   begin
     if(dbg_reg_wreq_i) begin

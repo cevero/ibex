@@ -37,6 +37,11 @@ module zeroriscy_core
   parameter RV32M               = 1
 )
 (
+  // pull register signals
+  output logic        regfile_we_o,
+  output logic [4:0]  regfile_waddr_o,
+  output logic [31:0] regfile_wdata_o,
+
   // Clock and Reset
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -348,6 +353,11 @@ module zeroriscy_core
   )
   id_stage_i
   (
+    // pull registes signals
+    .regfile_we_o                 ( regfile_we_o         ),
+    .regfile_waddr_o              ( regfile_waddr_o      ),
+    .regfile_wdata_o              ( regfile_wdata_o      ),
+
     .clk                          ( clk                  ),
     .rst_n                        ( rst_ni               ),
 
