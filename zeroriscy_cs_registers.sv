@@ -445,21 +445,7 @@ module zeroriscy_cs_registers
   // Performance Counter Registers
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if (rst_n == 1'b0)
-    begin
-      id_valid_q <= 1'b0;
-
-      PCER_q <= '0;
-      PCMR_q <= 2'h3;
-
-      for(int i = 0; i < N_PERF_REGS; i++)
-      begin
-        PCCR_q[i]     <= '0;
-        PCCR_inc_q[i] <= '0;
-      end
-    end
-    else
-    begin
+    if (rst_n != 1'b0) begin
       id_valid_q <= id_valid_i;
 
       PCER_q <= PCER_n;
