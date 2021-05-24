@@ -41,6 +41,7 @@ module zeroriscy_core
   output logic        regfile_we_o,
   output logic [4:0]  regfile_waddr_o,
   output logic [31:0] regfile_wdata_o,
+  output logic [31:0] pc_o,
 
   // Clock and Reset
   input  logic        clk_i,
@@ -337,6 +338,7 @@ module zeroriscy_core
     .perf_imiss_o        ( perf_imiss        )
   );
 
+  assign pc_o = pc_id;
 
   /////////////////////////////////////////////////
   //   ___ ____    ____ _____  _    ____ _____   //
