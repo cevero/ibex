@@ -159,7 +159,9 @@ module zeroriscy_register_file
 
     for(k = 1; k < NUM_WORDS; k++)
     begin : w_WordIter
-      if(mem_clocks[k] == 1'b1)
+      if (rst_n == 1'b0)
+        mem[k] <= 'b0;
+      else if(mem_clocks[k] == 1'b1)
         mem[k] = wdata_a_q;
     end
   end
