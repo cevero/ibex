@@ -34,11 +34,12 @@ module ibex_core #(
     parameter int unsigned        DmExceptionAddr  = 32'h1A110808
 ) (
 	//pulled out signals
-	output logic        regfile_we_o,
- 	output logic [4:0]  regfile_waddr_o,
+	  output logic        regfile_we_o,
+ 	  output logic [4:0]  regfile_waddr_o,
   	output logic [31:0] regfile_wdata_o,
   	output logic [31:0] pc_o,
-	output logic        recovery_done_o,
+	  output logic        recovery_done_o,
+    output logic        sniff_instr_valid_id_o,
 
     // Clock and Reset
     input  logic        clk_i,
@@ -366,10 +367,10 @@ module ibex_core #(
   assign regfile_waddr_o = rf_waddr_id;
   assign regfile_wdata_o = rf_wdata_id;
 
-  assign recovery_signal = debug_mode;
+  assign recovery_signal = ~debug_mode;
   assign pc_o = pc_id;
   assign recovery_done_o = recovery_signal;
-
+  assign sniff_instr_valid_id_o = instr_valid_id;
   //////////////////////
   // Clock management //
   //////////////////////
