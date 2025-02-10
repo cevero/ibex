@@ -1,4 +1,4 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 """Generate SystemVerilog UVM agent extended freom our DV lib
@@ -16,6 +16,7 @@ def gen_agent(name, has_separate_host_device_driver, root_dir, vendor):
     agent_dir = root_dir + "/" + name + "_agent"
 
     # yapf: disable
+    # flake8: noqa
     # 4-tuple - path, ip name, class name, file ext
     agent_srcs = [(agent_dir,               name + '_', 'if',            '.sv'),
                   (agent_dir,               name + '_', 'item',          '.sv'),

@@ -15,34 +15,34 @@
 `include "prim_assert.sv"
 
 module ibex_multdiv_fast #(
-    parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MFast
+  parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MFast
   ) (
-    input  logic             clk_i,
-    input  logic             rst_ni,
-    input  logic             mult_en_i,  // dynamic enable signal, for FSM control
-    input  logic             div_en_i,   // dynamic enable signal, for FSM control
-    input  logic             mult_sel_i, // static decoder output, for data muxes
-    input  logic             div_sel_i,  // static decoder output, for data muxes
-    input  ibex_pkg::md_op_e operator_i,
-    input  logic  [1:0]      signed_mode_i,
-    input  logic [31:0]      op_a_i,
-    input  logic [31:0]      op_b_i,
-    input  logic [33:0]      alu_adder_ext_i,
-    input  logic [31:0]      alu_adder_i,
-    input  logic             equal_to_zero_i,
-    input  logic             data_ind_timing_i,
+  input  logic             clk_i,
+  input  logic             rst_ni,
+  input  logic             mult_en_i,  // dynamic enable signal, for FSM control
+  input  logic             div_en_i,   // dynamic enable signal, for FSM control
+  input  logic             mult_sel_i, // static decoder output, for data muxes
+  input  logic             div_sel_i,  // static decoder output, for data muxes
+  input  ibex_pkg::md_op_e operator_i,
+  input  logic  [1:0]      signed_mode_i,
+  input  logic [31:0]      op_a_i,
+  input  logic [31:0]      op_b_i,
+  input  logic [33:0]      alu_adder_ext_i,
+  input  logic [31:0]      alu_adder_i,
+  input  logic             equal_to_zero_i,
+  input  logic             data_ind_timing_i,
 
-    output logic [32:0]      alu_operand_a_o,
-    output logic [32:0]      alu_operand_b_o,
+  output logic [32:0]      alu_operand_a_o,
+  output logic [32:0]      alu_operand_b_o,
 
-    input  logic [33:0]      imd_val_q_i[2],
-    output logic [33:0]      imd_val_d_o[2],
-    output logic [1:0]       imd_val_we_o,
+  input  logic [33:0]      imd_val_q_i[2],
+  output logic [33:0]      imd_val_d_o[2],
+  output logic [1:0]       imd_val_we_o,
 
-    input  logic             multdiv_ready_id_i,
+  input  logic             multdiv_ready_id_i,
 
-    output logic [31:0]      multdiv_result_o,
-    output logic             valid_o
+  output logic [31:0]      multdiv_result_o,
+  output logic             valid_o
 );
 
   import ibex_pkg::*;
@@ -83,6 +83,9 @@ module ibex_multdiv_fast #(
 
   logic        mult_en_internal;
   logic        div_en_internal;
+
+  // Used for SVA purposes, no functional relevance
+  logic        sva_mul_fsm_idle;
 
   typedef enum logic [2:0] {
     MD_IDLE, MD_ABS_A, MD_ABS_B, MD_COMP, MD_LAST, MD_CHANGE_SIGN, MD_FINISH
@@ -224,7 +227,7 @@ module ibex_multdiv_fast #(
 
           summand1 = '0;
           summand2 = accum;
-          summand3 = mult3_res;
+          summand3 = $unsigned(mult3_res);
 
           mult_state_d = MULL;
           mult_valid = 1'b1;
@@ -253,6 +256,8 @@ module ibex_multdiv_fast #(
 
     // States must be knwon/valid.
     `ASSERT_KNOWN(IbexMultStateKnown, mult_state_q)
+
+    assign sva_mul_fsm_idle = mult_state_q == MULL;
 
   // The fast multiplier uses one 17 bit multiplier to compute MUL instructions in 3 cycles
   // and MULH instructions in 4 cycles.
@@ -372,6 +377,8 @@ module ibex_multdiv_fast #(
     // States must be knwon/valid.
     `ASSERT_KNOWN(IbexMultStateKnown, mult_state_q)
 
+    assign sva_mul_fsm_idle = mult_state_q == ALBL;
+
   end // gen_mult_fast
 
   // Divider
@@ -415,7 +422,7 @@ module ibex_multdiv_fast #(
     div_hold         = 1'b0;
     div_by_zero_d    = div_by_zero_q;
 
-    unique case(md_state_q)
+    unique case (md_state_q)
       MD_IDLE: begin
         if (operator_i == MD_OP_DIV) begin
           // Check if the Denominator is 0
@@ -423,6 +430,7 @@ module ibex_multdiv_fast #(
           // Note with data-independent time option, the full divide operation will proceed as
           // normal and will naturally return -1
           op_remainder_d = '1;
+          // SEC_CM: CORE.DATA_REG_SW.SCA
           md_state_d     = (!data_ind_timing_i && equal_to_zero_i) ? MD_FINISH : MD_ABS_A;
           // Record that this is a div by zero to stop the sign change at the end of the
           // division (in data_ind_timing mode).
@@ -433,6 +441,7 @@ module ibex_multdiv_fast #(
           // Note with data-independent time option, the full divide operation will proceed as
           // normal and will naturally return operand a
           op_remainder_d = {2'b0, op_a_i};
+          // SEC_CM: CORE.DATA_REG_SW.SCA
           md_state_d     = (!data_ind_timing_i && equal_to_zero_i) ? MD_FINISH : MD_ABS_A;
         end
         // 0 - B = 0 iff B == 0
@@ -516,11 +525,27 @@ module ibex_multdiv_fast #(
     endcase // md_state_q
   end
 
+
   assign valid_o = mult_valid | div_valid;
 
   // States must be knwon/valid.
   `ASSERT(IbexMultDivStateValid, md_state_q inside {
       MD_IDLE, MD_ABS_A, MD_ABS_B, MD_COMP, MD_LAST, MD_CHANGE_SIGN, MD_FINISH})
+
+`ifdef INC_ASSERT
+  logic sva_fsm_idle;
+  logic unused_sva_fsm_idle;
+
+  // This is intended to be accessed via hierarchal references so isn't output from this module nor
+  // used in any logic in this module
+  assign sva_fsm_idle = (md_state_q == MD_IDLE) && sva_mul_fsm_idle;
+  // Mark the sva_fsm_idle as unused to avoid lint issues
+  assign unused_sva_fsm_idle = sva_fsm_idle;
+`else
+  logic unused_sva_mul_fsm_idle;
+
+  assign unused_sva_mul_fsm_idle = sva_mul_fsm_idle;
+`endif
 
 `ifdef FORMAL
   `ifdef YOSYS

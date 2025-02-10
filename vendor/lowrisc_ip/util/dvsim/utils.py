@@ -1,4 +1,4 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 r"""
@@ -9,10 +9,13 @@ import logging as log
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
 from collections import OrderedDict
+from datetime import datetime
+from pathlib import Path
 
 import hjson
 import mistletoe
@@ -21,13 +24,19 @@ from premailer import transform
 # For verbose logging
 VERBOSE = 15
 
+# Timestamp format when creating directory backups.
+TS_FORMAT = "%y.%m.%d_%H.%M.%S"
+
+# Timestamp format when generating reports.
+TS_FORMAT_LONG = "%A %B %d %Y %H:%M:%S UTC"
+
 
 # Run a command and get the result. Exit with error if the command did not
 # succeed. This is a simpler version of the run_cmd function below.
 def run_cmd(cmd):
     (status, output) = subprocess.getstatusoutput(cmd)
     if status:
-        sys.stderr.write("cmd " + cmd + " returned with status " + str(status))
+        print(f'cmd {cmd} returned with status {status}', file=sys.stderr)
         sys.exit(status)
     return output
 
@@ -74,7 +83,7 @@ def parse_hjson(hjson_file):
     hjson_cfg_dict = None
     try:
         log.debug("Parsing %s", hjson_file)
-        f = open(hjson_file, 'rU')
+        f = open(hjson_file, 'r')
         text = f.read()
         hjson_cfg_dict = hjson.loads(text, use_decimal=True)
         f.close()
@@ -103,7 +112,8 @@ def _stringify_wildcard_value(value):
     try:
         return ' '.join(_stringify_wildcard_value(x) for x in value)
     except TypeError:
-        raise ValueError('Wildcard had value {!r} which is not of a supported type.')
+        raise ValueError('Wildcard had value {!r} which is not of a supported '
+                         'type.'.format(value))
 
 
 def _subst_wildcards(var, mdict, ignored, ignore_error, seen):
@@ -144,19 +154,18 @@ def _subst_wildcards(var, mdict, ignored, ignore_error, seen):
         # That's not allowed!
         if name in seen:
             raise ValueError('String contains circular expansion of '
-                             'wildcard {!r}.'
-                             .format(match.group(0)))
+                             'wildcard {!r}.'.format(match.group(0)))
 
         # Treat eval_cmd specially
         if name == 'eval_cmd':
-            cmd = _subst_wildcards(right_str[match.end():],
-                                   mdict, ignored, ignore_error, seen)[0]
+            cmd = _subst_wildcards(right_str[match.end():], mdict, ignored,
+                                   ignore_error, seen)[0]
 
             # Are there any wildcards left in cmd? If not, we can run the
             # command and we're done.
             cmd_matches = list(wildcard_re.finditer(cmd))
             if not cmd_matches:
-                var = var[:idx] + run_cmd(cmd)
+                var = var[:match.start()] + run_cmd(cmd)
                 continue
 
             # Otherwise, check that each of them is ignored, or that
@@ -170,8 +179,7 @@ def _subst_wildcards(var, mdict, ignored, ignore_error, seen):
             if bad_names:
                 raise ValueError('Cannot run eval_cmd because the command '
                                  'expands to {!r}, which still contains a '
-                                 'wildcard.'
-                                 .format(cmd))
+                                 'wildcard.'.format(cmd))
 
             # We can't run the command (because it still has wildcards), but we
             # don't want to report an error either because ignore_error is true
@@ -193,20 +201,19 @@ def _subst_wildcards(var, mdict, ignored, ignore_error, seen):
                 continue
 
             raise ValueError('String to be expanded contains '
-                             'unknown wildcard, {!r}.'
-                             .format(match.group(0)))
+                             'unknown wildcard, {!r}.'.format(match.group(0)))
 
         value = _stringify_wildcard_value(value)
 
         # Do any recursive expansion of value, adding name to seen (to avoid
         # circular recursion).
-        value, saw_err = _subst_wildcards(value, mdict,
-                                          ignored, ignore_error, seen + [name])
+        value, saw_err = _subst_wildcards(value, mdict, ignored, ignore_error,
+                                          seen + [name])
 
         # Replace the original match with the result and go around again. If
         # saw_err, increment idx past what we just inserted.
-        var = (var[:idx] +
-               right_str[:match.start()] + value + right_str[match.end():])
+        var = (var[:idx] + right_str[:match.start()] + value +
+               right_str[match.end():])
         if saw_err:
             any_err = True
             idx += match.start() + len(value)
@@ -279,7 +286,8 @@ def subst_wildcards(var, mdict, ignored_wildcards=[], ignore_error=False):
 
     '''
     try:
-        return _subst_wildcards(var, mdict, ignored_wildcards, ignore_error, [])[0]
+        return _subst_wildcards(var, mdict, ignored_wildcards, ignore_error,
+                                [])[0]
     except ValueError as err:
         log.error(str(err))
         sys.exit(1)
@@ -407,7 +415,7 @@ def htmc_color_pc_cells(text):
     fp_patterns = r"[\+\-]?\d+\.?\d*"
 
     patterns = fp_patterns + '|' + na_list_patterns
-    indicators = "%|%u|G|B|E|W|EN|WN"
+    indicators = "%|%u|G|B|E|W|I|EN|WN"
     match = re.findall(
         r"(<td.*>\s*(" + patterns + r")\s+(" + indicators + r")\s*</td>)",
         text)
@@ -468,6 +476,9 @@ def htmc_color_pc_cells(text):
                 # Bad: red
                 elif indicator == "B":
                     subst = color_cell(cell, "c0", indicator)
+                # Info, uncolored.
+                elif indicator == "I":
+                    subst = cell.replace("I", "")
                 # Bad if positive: red for errors, yellow for warnings,
                 # otherwise green.
                 elif indicator in ["E", "W"]:
@@ -518,3 +529,120 @@ def print_msg_list(msg_list_title, msg_list, max_msg_count=-1):
                 break
         md_results += "```\n"
     return md_results
+
+
+def rm_path(path, ignore_error=False):
+    '''Removes the specified path if it exists.
+
+    'path' is a Path-like object. If it does not exist, the function simply
+    returns. If 'ignore_error' is set, then exception caught by the remove
+    operation is raised, else it is ignored.
+    '''
+
+    exc = None
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except IsADirectoryError:
+        try:
+            shutil.rmtree(path)
+        except OSError as e:
+            exc = e
+    except OSError as e:
+        exc = e
+
+    if exc:
+        log.error("Failed to remove {}:\n{}.".format(path, exc))
+        if not ignore_error:
+            raise exc
+
+
+def mk_path(path):
+    '''Create the specified path if it does not exist.
+
+    'path' is a Path-like object. If it does exist, the function simply
+    returns. If it does not exist, the function creates the path and its
+    parent dictories if necessary.
+    '''
+    try:
+        Path(path).mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        log.fatal("Failed to create directory {}:\n{}.".format(path, e))
+        sys.exit(1)
+
+
+def mk_symlink(path, link):
+    '''Create a symlink from the given path.
+
+    'link' is a Path-like object. If it does exist, remove the existing link and
+    create a new symlink with this given path.
+    If it does not exist, the function creates the symlink with the given path.
+    '''
+    while True:
+        try:
+            os.symlink(path, link)
+            break
+        except FileExistsError:
+            rm_path(link)
+
+
+def clean_odirs(odir, max_odirs, ts_format=TS_FORMAT):
+    """Clean previous output directories.
+
+    When running jobs, we may want to maintain a limited history of
+    previous invocations. This method finds and deletes the output
+    directories at the base of input arg 'odir' with the oldest timestamps,
+    if that limit is reached. It returns a list of directories that
+    remain after deletion.
+    """
+
+    odir = Path(odir)
+
+    if os.path.exists(odir):
+        # If output directory exists, back it up.
+        ts = datetime.fromtimestamp(os.stat(odir).st_ctime).strftime(ts_format)
+        # Prior to Python 3.9, shutil may run into an error when passing in
+        # Path objects (see https://bugs.python.org/issue32689). While this
+        # has been fixed in Python 3.9, string casts are added so that this
+        # also works with older versions.
+        shutil.move(str(odir), str(odir.with_name(ts)))
+
+    # Get list of past output directories sorted by creation time.
+    pdir = odir.resolve().parent
+    if not pdir.exists():
+        return []
+
+    dirs = sorted([old for old in pdir.iterdir() if (old.is_dir() and
+                                                     old != 'summary')],
+                  key=os.path.getctime,
+                  reverse=True)
+
+    for old in dirs[max(0, max_odirs - 1):]:
+        shutil.rmtree(old, ignore_errors=True)
+
+    return [] if max_odirs == 0 else dirs[:max_odirs - 1]
+
+
+def check_bool(x):
+    """check_bool checks if input 'x' either a bool or
+       one of the following strings: ["true", "false"]
+        It returns value as Bool type.
+    """
+    if isinstance(x, bool):
+        return x
+    if not x.lower() in ["true", "false"]:
+        raise RuntimeError("{} is not a boolean value.".format(x))
+    else:
+        return (x.lower() == "true")
+
+
+def check_int(x):
+    """check_int checks if input 'x' is decimal integer.
+        It returns value as an int type.
+    """
+    if isinstance(x, int):
+        return x
+    if not x.isdecimal():
+        raise RuntimeError("{} is not a decimal number".format(x))
+    return int(x)

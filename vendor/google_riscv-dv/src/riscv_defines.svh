@@ -70,6 +70,11 @@
   class riscv_``instr_n``_instr extends riscv_instr;  \
     `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
 
+// CSR instructions
+`define DEFINE_CSR_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM)  \
+  class riscv_``instr_n``_instr extends riscv_csr_instr;  \
+    `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
+
 // Floating point instruction
 `define DEFINE_FP_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM)  \
   class riscv_``instr_n``_instr extends riscv_floating_point_instr;  \
@@ -87,7 +92,7 @@
 
 // Floating point compressed instruction
 `define DEFINE_FC_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM)  \
-  class riscv_``instr_n``_instr extends riscv_compressed_instr;  \
+  class riscv_``instr_n``_instr extends riscv_floating_point_instr;  \
     `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
 
 // Vector arithmetic instruction
@@ -105,3 +110,22 @@
   class riscv_``instr_n``_instr extends riscv_b_instr;  \
     `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
 
+//Zba-extension instruction
+`define DEFINE_ZBA_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM) \
+  class riscv_``instr_n``_instr extends riscv_zba_instr; \
+    `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
+
+//Zbb-extension instruction
+`define DEFINE_ZBB_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM) \
+  class riscv_``instr_n``_instr extends riscv_zbb_instr; \
+    `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
+
+//Zbc-extension instruction
+`define DEFINE_ZBC_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM) \
+  class riscv_``instr_n``_instr extends riscv_zbc_instr; \
+    `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)
+
+//Zbs-extension instruction
+`define DEFINE_ZBS_INSTR(instr_n, instr_format, instr_category, instr_group, imm_tp = IMM) \
+  class riscv_``instr_n``_instr extends riscv_zbs_instr; \
+    `INSTR_BODY(instr_n, instr_format, instr_category, instr_group, imm_tp)

@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -8,7 +8,8 @@
 // synchronizer before en_i).
 
 module prim_generic_clock_gating #(
-  parameter bit NoFpgaGate = 1'b0 // this parameter has no function in generic
+  parameter bit NoFpgaGate = 1'b0, // this parameter has no function in generic
+  parameter bit FpgaBufGlobal = 1'b1 // this parameter has no function in generic
 ) (
   input        clk_i,
   input        en_i,

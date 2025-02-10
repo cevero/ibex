@@ -1,8 +1,8 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 {
-  entries: [
+  testpoints: [
     {
       name: alert_test
       desc: '''
@@ -20,9 +20,8 @@
               all sets back to 0.
             - Repeat the above steps a bunch of times.
             '''
-      milestone: V2
+      stage: V2
       tests: ["{name}{intf}_alert_test"]
     }
   ]
 }
-

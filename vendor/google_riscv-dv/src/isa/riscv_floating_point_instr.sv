@@ -30,6 +30,19 @@ class riscv_floating_point_instr extends riscv_instr;
   `uvm_object_utils(riscv_floating_point_instr)
   `uvm_object_new
 
+  constraint rvfc_csr_c {
+    if (format inside {CL_FORMAT, CS_FORMAT, CI_FORMAT, CSS_FORMAT}) {
+      if (has_rs1) {
+        rs1 inside {[S0:A5]};
+      }
+      if (has_fs2) {
+        fs2 inside {[FS0:FS1]};
+      }
+      if (has_fd) {
+        fd inside {[FA0:FA5]};
+      }
+    }
+}
   // Convert the instruction to assembly code
   virtual function string convert2asm(string prefix = "");
     string asm_str;
@@ -66,6 +79,10 @@ class riscv_floating_point_instr extends riscv_instr;
         asm_str = $sformatf("%0s%0s, %0s(%0s)", asm_str, fd.name(), get_imm(), rs1.name());
       CS_FORMAT:
         asm_str = $sformatf("%0s%0s, %0s(%0s)", asm_str, fs2.name(), get_imm(), rs1.name());
+      CSS_FORMAT:
+        asm_str = $sformatf("%0s%0s, %0s(sp)", asm_str, fs2.name(), get_imm());
+      CI_FORMAT:
+        asm_str = $sformatf("%0s%0s, %0s", asm_str, fd.name(), get_imm());
       default:
         `uvm_fatal(`gfn, $sformatf("Unsupported floating point format: %0s", format.name()))
     endcase
@@ -80,6 +97,13 @@ class riscv_floating_point_instr extends riscv_instr;
       asm_str = {asm_str, " #",comment};
     return asm_str.tolower();
   endfunction
+
+  virtual function void set_imm_len();
+    if (format inside {CL_FORMAT, CS_FORMAT})
+      imm_len = 5;
+    if (format inside {CI_FORMAT, CSS_FORMAT})
+      imm_len = 6;
+  endfunction: set_imm_len
 
   virtual function void do_copy(uvm_object rhs);
     riscv_floating_point_instr rhs_;
@@ -146,6 +170,14 @@ class riscv_floating_point_instr extends riscv_instr;
         has_rs1 = 1'b1;
         has_fs1 = 1'b0;
         has_fd = 1'b0;
+      end
+      CSS_FORMAT: begin
+        has_rs1 = 1'b0;
+        has_fd = 1'b0;
+      end
+      CI_FORMAT: begin
+        has_rs1 = 1'b0;
+        has_fs2 = 1'b0;
       end
       default: `uvm_info(`gfn, $sformatf("Unsupported format %0s", format.name()), UVM_LOW)
     endcase
@@ -248,7 +280,7 @@ class riscv_floating_point_instr extends riscv_instr;
     if (group inside {RV32F, RV64F}) begin
       fs1_sign = get_fp_operand_sign(fs1_value, 31);
       fs2_sign = get_fp_operand_sign(fs2_value, 31);
-      fs3_sign = get_fp_operand_sign(fs2_value, 31);
+      fs3_sign = get_fp_operand_sign(fs3_value, 31);
       fd_sign = get_fp_operand_sign(fd_value, 31);
     end else if (instr_name == FCVT_S_D) begin
       fs1_sign = get_fp_operand_sign(fs1_value, 63);
@@ -259,7 +291,7 @@ class riscv_floating_point_instr extends riscv_instr;
     end else begin
       fs1_sign = get_fp_operand_sign(fs1_value, 63);
       fs2_sign = get_fp_operand_sign(fs2_value, 63);
-      fs3_sign = get_fp_operand_sign(fs2_value, 63);
+      fs3_sign = get_fp_operand_sign(fs3_value, 63);
       fd_sign = get_fp_operand_sign(fd_value, 63);
     end
   endfunction : pre_sample

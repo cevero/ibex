@@ -1,5 +1,5 @@
 CAPI=2:
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,6 +9,7 @@ filesets:
   files_rtl:
     depend:
       - lowrisc:prim:assert
+      - lowrisc:prim:cipher_pkg
     files:
       - rtl/prim_lfsr.sv
     file_type: systemVerilogSource
@@ -17,22 +18,19 @@ filesets:
     depend:
       # common waivers
       - lowrisc:lint:common
-    files:
-    file_type: vlt
 
   files_ascentlint_waiver:
     depend:
       # common waivers
       - lowrisc:lint:common
     files:
-      # - lint/prim_lfsr.waiver
+      - lint/prim_lfsr.waiver
     file_type: waiver
 
   files_veriblelint_waiver:
     depend:
       # common waivers
       - lowrisc:lint:common
-      - lowrisc:lint:comportable
 
 targets:
   default: &default_target

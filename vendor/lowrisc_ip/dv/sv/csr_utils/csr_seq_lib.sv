@@ -1,10 +1,9 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
 // CSR suite of sequences that do writes and reads to csrs
 // includes hw_reset, rw, bit_bash and aliasing tests for csrs, and mem_walk for uvm_mems
-// TODO: when mem backdoor is implemented, add uvm_mem_access_seq for backdoor rd
 // The sequences perform csr writes and reads and follow the standard csr test suite. If external
 // checker is enabled, then the external entity is required to update the mirrored value on
 // writes. If not enabled, the sequences themselves call predict function to update the mirrored
@@ -23,10 +22,9 @@
 class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
   `uvm_object_utils(csr_base_seq)
 
-  uvm_reg_block   models[$];
-  uvm_reg         all_csrs[$];
-  uvm_reg         test_csrs[$];
-  csr_excl_item   m_csr_excl_item;
+  dv_base_reg_block models[$];
+  uvm_reg           all_csrs[$];
+  uvm_reg           test_csrs[$];
 
   // By default, assume external checker (example, scoreboard) is turned off. If that is the case,
   // then writes are followed by call to predict function to update the mirrored value. Reads are
@@ -48,12 +46,6 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
 
     // create test_csrs list only if its empty
     if (test_csrs.size() == 0) set_csr_test_range();
-
-    // create dummy m_csr_excl_item if not supplied
-    if (m_csr_excl_item == null) begin
-      `uvm_info(`gtn, "m_csr_excl_item is null, creating a dummy one locally", UVM_LOW)
-      m_csr_excl_item = csr_excl_item::type_id::create("m_csr_excl_item");
-    end
   endtask
 
   // post_start
@@ -63,10 +55,6 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
     test_csrs.delete();
   endtask
 
-  function void set_csr_excl_item(csr_excl_item item);
-    this.m_csr_excl_item = item;
-  endfunction
-
   // extract csrs and split and prune to a specified test_csr_chunk
   virtual function void set_csr_test_range();
     int   start_idx;
@@ -74,44 +62,54 @@ class csr_base_seq extends uvm_reg_sequence #(uvm_sequence #(uvm_reg_item));
     int   chunk_size;
 
     // extract all csrs from the model
-    // TODO: add and use function here instead that allows pre filtering csrs
     all_csrs.delete();
     foreach (models[i]) begin
       models[i].get_registers(all_csrs);
     end
 
+    void'($value$plusargs("num_test_csrs=%0d", num_test_csrs));
     if (num_test_csrs != 0) begin
       num_csr_chunks = all_csrs.size / num_test_csrs + 1;
       `DV_CHECK_STD_RANDOMIZE_WITH_FATAL(test_csr_chunk,
           test_csr_chunk inside {[1:num_csr_chunks]};)
-    end
-    else begin
+    end else begin
       // extract test_csr_chunk, num_csr_chunks from plusargs
       void'($value$plusargs("test_csr_chunk=%0d", test_csr_chunk));
       void'($value$plusargs("num_csr_chunks=%0d", num_csr_chunks));
     end
 
     if (!(test_csr_chunk inside {[1:num_csr_chunks]})) begin
-      `uvm_fatal(`gtn, $sformatf({{"invalid opt +test_csr_chunk=%0d, +num_csr_chunks=%0d "},
-                                  {"(1 <= test_csr_chunk <= num_csr_chunks)"}},
+      `uvm_fatal(`gtn, $sformatf({{"Invalid opt +test_csr_chunk=%0d, +num_csr_chunks=%0d "},
+                                  {"(1 <= test_csr_chunk <= num_csr_chunks)."}},
                                   test_csr_chunk, num_csr_chunks))
     end
     chunk_size = (num_test_csrs != 0) ? num_test_csrs : (all_csrs.size / num_csr_chunks + 1);
     start_idx = (test_csr_chunk - 1) * chunk_size;
     end_idx = test_csr_chunk * chunk_size;
-    if (end_idx >= all_csrs.size())
-      end_idx = all_csrs.size() - 1;
+    if (end_idx >= all_csrs.size()) end_idx = all_csrs.size() - 1;
 
-    test_csrs = all_csrs[start_idx:end_idx];
-    `uvm_info(`gtn, $sformatf("testing %0d csrs [%0d - %0d] in all supplied models",
-                    test_csrs.size(), start_idx, end_idx), UVM_MEDIUM)
-    foreach (test_csrs[i]) begin
-      `uvm_info(`gtn, $sformatf("test_csrs list: %0s, reset: 0x%0x", test_csrs[i].get_full_name(),
-                                 test_csrs[i].get_mirrored_value()), UVM_HIGH)
+    `uvm_info(`gtn, $sformatf("Testing %0d csrs [%0d - %0d] in all supplied models.",
+                              test_csrs.size(), start_idx, end_idx), UVM_MEDIUM)
+    test_csrs.delete();
+    for (int i = start_idx; i <= end_idx; i++) begin
+      test_csrs.push_back(all_csrs[i]);
+      `uvm_info(`gtn, $sformatf("Testing CSR %0s, reset: 0x%0x.", all_csrs[i].get_full_name(),
+                                all_csrs[i].get_mirrored_value()), UVM_HIGH)
     end
     test_csrs.shuffle();
   endfunction
 
+  // check if this csr/fld is excluded from test based on the excl info in blk.csr_excl
+  function bit is_excl(uvm_object obj,
+                       csr_excl_type_e csr_excl_type,
+                       csr_test_type_e csr_test_type);
+    csr_excl_item csr_excl = get_excl_item(obj);
+    if (csr_excl == null) begin
+      return 0;
+    end else begin
+      return csr_excl.is_excl(obj, csr_excl_type, csr_test_type);
+    end
+  endfunction
 endclass
 
 //--------------------------------------------------------------------------------------------------
@@ -131,7 +129,7 @@ class csr_hw_reset_seq extends csr_base_seq;
       uvm_reg_data_t compare_mask;
 
       // check if parent block or register is excluded from init check
-      if (m_csr_excl_item.is_excl(test_csrs[i], CsrExclInitCheck, CsrHwResetTest)) begin
+      if (is_excl(test_csrs[i], CsrExclInitCheck, CsrHwResetTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclInitCheck exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -140,9 +138,21 @@ class csr_hw_reset_seq extends csr_base_seq;
       `uvm_info(`gtn, $sformatf("Verifying reset value of register %0s",
                                 test_csrs[i].get_full_name()), UVM_MEDIUM)
 
-      compare_mask = get_mask_excl_fields(test_csrs[i], CsrExclInitCheck, CsrHwResetTest,
-                                          m_csr_excl_item);
+      compare_mask = get_mask_excl_fields(test_csrs[i], CsrExclInitCheck, CsrHwResetTest);
+      // Read CSR twice, one from backdoor (if path available), the other from frontdoor.
+      if (test_csrs[i].has_hdl_path()) begin
+        // Reading from backdoor can ensure that we deposit value into the storage rather than just
+        // a net. If we mistakenly deposit to a net, reset can't clear it and this check will fail.
+        csr_rd_check(.ptr           (test_csrs[i]),
+                     .backdoor      (1),
+                     .compare       (!external_checker),
+                     .compare_vs_ral(1'b1),
+                     .compare_mask  (compare_mask));
+      end
+
+      // Read and check value via frontdoor.
       csr_rd_check(.ptr           (test_csrs[i]),
+                   .backdoor      (0),
                    .blocking      (0),
                    .compare       (!external_checker),
                    .compare_vs_ral(1'b1),
@@ -169,9 +179,18 @@ class csr_write_seq extends csr_base_seq;
 
     // check all hdl paths are valid
     if (!test_backdoor_path_done) begin
-      uvm_reg_mem_hdl_paths_seq hdl_check_seq;
-      hdl_check_seq = uvm_reg_mem_hdl_paths_seq::type_id::create("hdl_check_seq");
       foreach (models[i]) begin
+        bkdr_reg_path_e path_kind;
+        uvm_reg_mem_hdl_paths_seq hdl_check_seq;
+
+        hdl_check_seq = uvm_reg_mem_hdl_paths_seq::type_id::create("hdl_check_seq");
+        do begin
+          // Test the HDL paths for correctness if they exist.
+          if (models[i].has_hdl_path(path_kind.name)) begin
+            hdl_check_seq.abstractions.push_back(path_kind.name);
+          end
+          path_kind = path_kind.next;
+        end while (path_kind != path_kind.first);
         hdl_check_seq.model = models[i];
         hdl_check_seq.start(null);
       end
@@ -182,7 +201,7 @@ class csr_write_seq extends csr_base_seq;
       dv_base_reg dv_csr;
       bit         backdoor;
       // check if parent block or register is excluded from write
-      if (m_csr_excl_item.is_excl(test_csrs[i], CsrExclWrite, CsrHwResetTest)) begin
+      if (is_excl(test_csrs[i], CsrExclWrite, CsrHwResetTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -192,15 +211,32 @@ class csr_write_seq extends csr_base_seq;
                                 test_csrs[i].get_full_name()), UVM_MEDIUM)
 
       `DV_CHECK_STD_RANDOMIZE_FATAL(wdata)
-      wdata &= get_mask_excl_fields(test_csrs[i], CsrExclWrite, CsrHwResetTest, m_csr_excl_item);
+      wdata = get_csr_wdata_with_write_excl(test_csrs[i], wdata, CsrHwResetTest);
 
       `downcast(dv_csr, test_csrs[i])
-      if (en_rand_backdoor_write && !dv_csr.get_is_ext_reg()) begin
-        `DV_CHECK_STD_RANDOMIZE_WITH_FATAL(backdoor,
-                                           backdoor dist {0 :/ 7, 1 :/ 3};)
+      if (en_rand_backdoor_write && test_csrs[i].has_hdl_path() && !dv_csr.get_is_ext_reg()) begin
+        `DV_CHECK_STD_RANDOMIZE_WITH_FATAL(backdoor, backdoor dist {0 :/ 7, 1 :/ 3};)
       end
 
-      csr_wr(.csr(test_csrs[i]), .value(wdata), .blocking(0), .backdoor(backdoor));
+      if (backdoor) begin
+        string str_kinds[$];
+
+        test_csrs[i].get_hdl_path_kinds(str_kinds);
+        str_kinds.shuffle();
+
+        foreach (str_kinds[j]) begin
+          bkdr_reg_path_e enum_kind;
+          // Convert string name to an enum
+          `DV_CHECK_FATAL(uvm_enum_wrapper#(bkdr_reg_path_e)::from_name(str_kinds[j], enum_kind))
+
+          csr_poke(.ptr(test_csrs[i]), .value(wdata), .kind(enum_kind));
+
+          `DV_CHECK_STD_RANDOMIZE_FATAL(wdata)
+          wdata = get_csr_wdata_with_write_excl(test_csrs[i], wdata, CsrHwResetTest);
+        end
+      end else begin
+        csr_wr(.ptr(test_csrs[i]), .value(wdata), .blocking(0));
+      end
     end
   endtask
 
@@ -222,11 +258,23 @@ class csr_rw_seq extends csr_base_seq;
   virtual task body();
     foreach (test_csrs[i]) begin
       uvm_reg_data_t wdata;
-      uvm_reg_data_t compare_mask;
       uvm_reg_field  test_fields[$];
+      dv_base_reg    test_dv_csr;
+      bit            supports_byte_enable;
+      bit            do_field_rd_check;
+
+      // The test_csrs list may be jumbled from different RAL models. Hence, we find at runtime, if
+      // the interface supports byte_accesses.
+      begin
+        uvm_reg_map map = test_csrs[i].get_default_map();
+        uvm_reg_adapter adapter = map.get_adapter();
+        if (adapter != null) begin
+          supports_byte_enable = adapter.supports_byte_enable;
+        end
+      end
 
       // check if parent block or register is excluded from write
-      if (m_csr_excl_item.is_excl(test_csrs[i], CsrExclWrite, CsrRwTest)) begin
+      if (is_excl(test_csrs[i], CsrExclWrite, CsrRwTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -236,22 +284,32 @@ class csr_rw_seq extends csr_base_seq;
                                 test_csrs[i].get_full_name()), UVM_MEDIUM)
 
       `DV_CHECK_STD_RANDOMIZE_FATAL(wdata)
-      wdata &= get_mask_excl_fields(test_csrs[i], CsrExclWrite, CsrRwTest, m_csr_excl_item);
+      wdata = get_csr_wdata_with_write_excl(test_csrs[i], wdata, CsrRwTest);
 
       // if external checker is not enabled and writes are made non-blocking, then we need to
       // pre-predict so that the mirrored value will be updated. if we dont, then csr_rd_check task
       // might pick up stale mirrored value
       // the pre-predict also needs to happen after the register is being written, to make sure the
       // register is getting the updated access information.
-      csr_wr(.csr(test_csrs[i]), .value(wdata), .blocking(0), .predict(!external_checker));
+      csr_wr(.ptr(test_csrs[i]), .value(wdata), .blocking(0), .predict(!external_checker));
 
+      // Shadow register requires two writes with the same value to write registers into DUT.
+      // In `csr_wr` task, the `predict` task is triggered after two shadow writes are done.
+      // To avoid non-blocking access where shadow register read might be triggered between two
+      // consecutive shadow register write, we will wait until all outstanding accesses finish,
+      // then issue a shadow register read.
+      `downcast(test_dv_csr, test_csrs[i])
+      if (test_dv_csr.get_is_shadowed) wait_no_outstanding_access();
+
+      `DV_CHECK_STD_RANDOMIZE_WITH_FATAL(do_field_rd_check,
+          !supports_byte_enable -> !do_field_rd_check;)
       do_check_csr_or_field_rd(.csr(test_csrs[i]),
                               .blocking(0),
                               .compare(!external_checker),
                               .compare_vs_ral(1),
+                              .do_csr_field_rd_check(do_field_rd_check),
                               .csr_excl_type(CsrExclWriteCheck),
-                              .csr_test_type(CsrRwTest),
-                              .csr_excl_item(m_csr_excl_item));
+                              .csr_test_type(CsrRwTest));
 
       wait_if_max_outstanding_accesses_reached();
     end
@@ -271,17 +329,26 @@ class csr_bit_bash_seq extends csr_base_seq;
   `uvm_object_new
 
   virtual task body();
+    int unsigned total_count = test_csrs.size();
+    int unsigned done_count = 0;
+
+    `uvm_info(`gtn,
+              $sformatf("Running bit bash sequence for %0d registers", total_count),
+              UVM_MEDIUM)
     foreach (test_csrs[i]) begin
+      done_count++;
+      `uvm_info(`gtn,
+                $sformatf("Verifying register bit bash for %0s (register %0d/%0d)",
+                          test_csrs[i].get_full_name(), done_count, total_count),
+                UVM_MEDIUM)
+
       // check if parent block or register is excluded from write
-      if (m_csr_excl_item.is_excl(test_csrs[i], CsrExclWrite, CsrBitBashTest) ||
-          m_csr_excl_item.is_excl(test_csrs[i], CsrExclWriteCheck, CsrBitBashTest)) begin
+      if (is_excl(test_csrs[i], CsrExclWrite, CsrBitBashTest) ||
+          is_excl(test_csrs[i], CsrExclWriteCheck, CsrBitBashTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite/WriteCheck exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
       end
-
-      `uvm_info(`gtn, $sformatf("Verifying register bit bash for %0s",
-                test_csrs[i].get_full_name()), UVM_MEDIUM)
 
       begin
         uvm_reg_field   fields[$];
@@ -315,15 +382,15 @@ class csr_bit_bash_seq extends csr_base_seq;
           endcase
 
           // skip fields that are wr-excluded
-          if (m_csr_excl_item.is_excl(fields[j], CsrExclWrite, CsrBitBashTest)) begin
+          if (is_excl(fields[j], CsrExclWrite, CsrBitBashTest)) begin
             `uvm_info(`gtn, $sformatf("Skipping field %0s due to CsrExclWrite exclusion",
                                       fields[j].get_full_name()), UVM_MEDIUM)
             dc = 1;
           end
 
           // ignore fields that are init or rd-excluded
-          cmp = m_csr_excl_item.is_excl(fields[j], CsrExclInitCheck, CsrBitBashTest) ||
-                m_csr_excl_item.is_excl(fields[j], CsrExclWriteCheck, CsrBitBashTest) ;
+          cmp = is_excl(fields[j], CsrExclInitCheck, CsrBitBashTest) ||
+                is_excl(fields[j], CsrExclWriteCheck, CsrBitBashTest) ;
 
           // Any unused bits on the right side of the LSB?
           while (next_lsb < lsb) mode[next_lsb++] = "RO";
@@ -364,9 +431,8 @@ class csr_bit_bash_seq extends csr_base_seq;
       val = rg.get();
       val[k]  = ~val[k];
       err_msg = $sformatf("Wrote %0s[%0d]: %0b", rg.get_full_name(), k, val[k]);
-      csr_wr(.csr(rg), .value(val), .blocking(1), .predict(!external_checker));
+      csr_wr(.ptr(rg), .value(val), .blocking(1), .predict(!external_checker));
 
-      // TODO, outstanding access to same reg isn't supported in uvm_reg. Need to add another seq
       // uvm_reg waits until transaction is completed, before start another read/write in same reg
       csr_rd_check(.ptr           (rg),
                    .blocking      (0),
@@ -396,7 +462,7 @@ class csr_aliasing_seq extends csr_base_seq;
       uvm_reg_data_t wdata;
 
       // check if parent block or register is excluded
-      if (m_csr_excl_item.is_excl(test_csrs[i], CsrExclWrite, CsrAliasingTest)) begin
+      if (is_excl(test_csrs[i], CsrExclWrite, CsrAliasingTest)) begin
         `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclWrite exclusion",
                                   test_csrs[i].get_full_name()), UVM_MEDIUM)
         continue;
@@ -406,23 +472,27 @@ class csr_aliasing_seq extends csr_base_seq;
                                 test_csrs[i].get_full_name()), UVM_MEDIUM)
 
       `DV_CHECK_STD_RANDOMIZE_FATAL(wdata)
-      wdata &= get_mask_excl_fields(test_csrs[i], CsrExclWrite, CsrAliasingTest, m_csr_excl_item);
-      csr_wr(.csr(test_csrs[i]), .value(wdata), .blocking(0), .predict(!external_checker));
+      wdata = get_csr_wdata_with_write_excl(test_csrs[i], wdata, CsrAliasingTest);
+      csr_wr(.ptr(test_csrs[i]), .value(wdata), .blocking(0), .predict(!external_checker));
 
       all_csrs.shuffle();
+
+      // If all_csrs queue size is larger than 100, randomly pick 100 CSRs to avoid chip level test
+      // runtime too long.
+      if (all_csrs.size() > 100) all_csrs = all_csrs[0 : 99];
+
       foreach (all_csrs[j]) begin
         uvm_reg_data_t compare_mask;
 
         // check if parent block or register is excluded
-        if (m_csr_excl_item.is_excl(all_csrs[j], CsrExclInitCheck, CsrAliasingTest) ||
-            m_csr_excl_item.is_excl(all_csrs[j], CsrExclWriteCheck, CsrAliasingTest)) begin
+        if (is_excl(all_csrs[j], CsrExclInitCheck, CsrAliasingTest) ||
+            is_excl(all_csrs[j], CsrExclWriteCheck, CsrAliasingTest)) begin
           `uvm_info(`gtn, $sformatf("Skipping register %0s due to CsrExclInit/WriteCheck exclusion",
                                     all_csrs[j].get_full_name()), UVM_MEDIUM)
           continue;
         end
 
-        compare_mask = get_mask_excl_fields(all_csrs[j], CsrExclWriteCheck, CsrAliasingTest,
-                                            m_csr_excl_item);
+        compare_mask = get_mask_excl_fields(all_csrs[j], CsrExclWriteCheck, CsrAliasingTest);
         csr_rd_check(.ptr           (all_csrs[j]),
                      .blocking      (0),
                      .compare       (!external_checker),
@@ -450,6 +520,7 @@ class csr_mem_walk_seq extends csr_base_seq;
   virtual task body();
     mem_walk_seq = uvm_mem_walk_seq::type_id::create("mem_walk_seq");
     foreach (models[i]) begin
+      `uvm_info(`gfn, $sformatf("Testing model %0s", models[i].get_full_name()), UVM_LOW)
       mem_walk_seq.model = models[i];
       mem_walk_seq.start(null);
     end

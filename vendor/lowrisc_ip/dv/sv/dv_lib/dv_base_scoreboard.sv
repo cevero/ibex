@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -25,6 +25,7 @@ class dv_base_scoreboard #(type RAL_T = dv_base_reg_block,
     super.run_phase(phase);
     fork
       monitor_reset();
+      sample_resets();
     join_none
   endtask
 
@@ -36,6 +37,7 @@ class dv_base_scoreboard #(type RAL_T = dv_base_reg_block,
         @(posedge cfg.clk_rst_vif.rst_n);
         reset();
         cfg.reset_deasserted();
+        csr_utils_pkg::clear_outstanding_access();
         `uvm_info(`gfn, "out of reset", UVM_HIGH)
       end
       else begin
@@ -45,9 +47,13 @@ class dv_base_scoreboard #(type RAL_T = dv_base_reg_block,
     end
   endtask
 
+  virtual task sample_resets();
+    // Do nothing, actual coverage collection is under extended classes.
+  endtask
+
   virtual function void reset(string kind = "HARD");
     // reset the ral model
-    if (cfg.has_ral) ral.reset(kind);
+    foreach (cfg.ral_models[i]) cfg.ral_models[i].reset(kind);
   endfunction
 
   virtual function void pre_abort();
@@ -72,4 +78,3 @@ class dv_base_scoreboard #(type RAL_T = dv_base_reg_block,
   endfunction : pre_abort
 
 endclass
-

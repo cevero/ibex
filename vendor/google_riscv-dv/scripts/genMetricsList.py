@@ -5,7 +5,7 @@
 ## Limitation:
 ## Only generate tests targeted for build "rv32imc"
 ##
-## Note: Currently available testlists 
+## Note: Currently available testlists
 ##   <rootDir>/yaml/base_testlist.yaml
 ##   <rootDir>/yaml/cov_testlist.yaml
 ##   <rootDir>/target/rv64gcv/testlist.yaml
@@ -20,7 +20,7 @@
 
 import json
 
-runCmdBase = "cd /mux-flow/results; python3 <rootDir>/run.py --test TESTNAME --simulator dsim --iss ovpsim --seed <seed> --so --out <rootDir>/out --verbose; <rootDir>/scripts/check-status $?; rm -fr <rootDir>/out/dsim"
+runCmdBase = "cd /mux-flow/results; python3 <rootDir>/run.py --test TESTNAME --simulator dsim --iss spike --seed <seed> --so --out <rootDir>/out --verbose; <rootDir>/scripts/check-status $?; rm -fr <rootDir>/out/dsim"
 
 ## Based on testlist located in <rootDir>/yaml/base_testlist.yaml
 base_testList = ["riscv_arithmetic_basic_test",
@@ -58,7 +58,7 @@ for testName in base_testList + rv32imc_testList:
         test["isPass"] = "Test passed"
         test["metricsFile"] = "metrics.db"
         test["seed"] = "random"
-            
+
         metricsList.append(test)
 
 with open("regression_list.json", "w") as f:

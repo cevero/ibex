@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -13,7 +13,8 @@ module prim_generic_clock_mux2 #(
   output logic clk_o
 );
 
-  assign clk_o = (sel_i) ? clk1_i : clk0_i;
+  // We model the mux with logic operations for GTECH runs.
+  assign clk_o = (sel_i & clk1_i) | (~sel_i & clk0_i);
 
   // make sure sel is never X (including during reset)
   // need to use ##1 as this could break with inverted clocks that

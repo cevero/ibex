@@ -21,8 +21,9 @@ ASM_SRCS = $(filter %.S, $(SRCS))
 
 CC = riscv32-unknown-elf-gcc
 
-OBJCOPY ?= $(subst gcc,objcopy,$(wordlist 1,1,$(CC)))
-OBJDUMP ?= $(subst gcc,objdump,$(wordlist 1,1,$(CC)))
+CROSS_COMPILE = $(patsubst %-gcc,%-,$(CC))
+OBJCOPY ?= $(CROSS_COMPILE)objcopy
+OBJDUMP ?= $(CROSS_COMPILE)objdump
 
 LINKER_SCRIPT ?= $(COMMON_DIR)/link.ld
 CRT ?= $(COMMON_DIR)/crt0.S
@@ -33,15 +34,20 @@ OBJS := ${C_SRCS:.c=.o} ${ASM_SRCS:.S=.o} ${CRT:.S=.o}
 DEPS = $(OBJS:%.o=%.d)
 
 ifdef PROGRAM
-OUTFILES := $(PROGRAM).elf $(PROGRAM).vmem $(PROGRAM).bin $(PROGRAM).dis
+OUTFILES := $(PROGRAM).elf $(PROGRAM).vmem $(PROGRAM).bin
 else
 OUTFILES := $(OBJS)
 endif
 
 all: $(OUTFILES)
 
+ifdef PROGRAM
 $(PROGRAM).elf: $(OBJS) $(LINKER_SCRIPT)
 	$(CC) $(CFLAGS) -T $(LINKER_SCRIPT) $(OBJS) -o $@ $(LIBS)
+
+.PHONY: disassemble
+disassemble: $(PROGRAM).dis
+endif
 
 %.dis: %.elf
 	$(OBJDUMP) -fhSD $^ > $@

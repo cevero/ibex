@@ -1,17 +1,23 @@
-[![Build Status](https://dev.azure.com/lowrisc/ibex/_apis/build/status/lowRISC.ibex?branchName=master)](https://dev.azure.com/lowrisc/ibex/_build/latest?definitionId=3&branchName=master)
+[Ibex OpenTitan configuration Nightly Regression](https://ibex.reports.lowrisc.org/opentitan/latest/report.html)
+<a href="https://ibex.reports.lowrisc.org/opentitan/latest/report.html">
+  <img src="https://ibex.reports.lowrisc.org/opentitan/latest/summary.svg">
+</a>
 
 # Ibex RISC-V Core
 
-Ibex is a small and efficient, 32-bit, in-order RISC-V core with a 2-stage pipeline that implements
-the RV32IMC instruction set architecture.
+Ibex is a production-quality open source 32-bit RISC-V CPU core written in
+SystemVerilog. The CPU core is heavily parametrizable and well suited for
+embedded control applications. Ibex is being extensively verified and has
+seen multiple tape-outs. Ibex supports the Integer (I) or Embedded (E),
+Integer Multiplication and Division (M), Compressed (C), and B (Bit
+Manipulation) extensions.
 
 <p align="center"><img src="doc/03_reference/images/blockdiagram.svg" width="650"></p>
 
-This core was initially developed as part of the [PULP platform](https://www.pulp-platform.org)
-under the name "Zero-riscy" \[[1](https://doi.org/10.1109/PATMOS.2017.8106976)\], and has been
+Ibex was initially developed as part of the [PULP platform](https://www.pulp-platform.org)
+under the name ["Zero-riscy"](https://doi.org/10.1109/PATMOS.2017.8106976), and has been
 contributed to [lowRISC](https://www.lowrisc.org) who maintains it and develops it further. It is
-under active development, with further code cleanups, feature additions, and test and verification
-planned for the future.
+under active development.
 
 ## Configuration
 
@@ -23,17 +29,16 @@ These are configurations on which lowRISC is focusing for performance evaluation
 | Config | "micro" | "small" | "maxperf" | "maxperf-pmp-bmfull" |
 | ------ | ------- | --------| ----------| -------------------- |
 | Features | RV32EC | RV32IMC, 3 cycle mult | RV32IMC, 1 cycle mult, Branch target ALU, Writeback stage | RV32IMCB, 1 cycle mult, Branch target ALU, Writeback stage, 16 PMP regions |
-| Performance (CoreMark/MHz) | 0.904 | 2.47 | 3.13 | 3.05 |
-| Area - Yosys (kGE) | 17.44 | 26.06 | 35.64 | 58.74 |
-| Area - Commercial (estimated kGE) | ~16 | ~24 | ~33 | ~54 |
-| Verification status | Red | Green | Amber | Amber |
+| Performance (CoreMark/MHz) | 0.904 | 2.47 | 3.13 | 3.13 |
+| Area - Yosys (kGE) | 16.85 | 26.60 | 32.48 | 66.02 |
+| Area - Commercial (estimated kGE) | ~15 | ~24 | ~30 | ~61 |
+| Verification status | Red | Green | Green | Green |
 
 Notes:
 
 * Performance numbers are based on CoreMark running on the Ibex Simple System [platform](examples/simple_system/README.md).
   Note that different ISAs (use of B and C extensions) give the best results for different configurations.
   See the [Benchmarks README](examples/sw/benchmarks/README.md) for more information.
-  The "maxperf-pmp-bmfull" configuration sets a `SpecBranch` parameter in `ibex_core.sv`; this helps timing but has a small negative performance impact.
 * Yosys synthesis area numbers are based on the Ibex basic synthesis [flow](syn/README.md) using the latch-based register file.
 * Commercial synthesis area numbers are a rough estimate of what might be achievable with a commercial synthesis flow and technology library.
 * For comparison, the original "Zero-riscy" core yields an area of 23.14kGE using our Yosys synthesis flow.
@@ -42,8 +47,8 @@ Notes:
   Amber indicates that some verification has been performed, but the configuration is still experimental.
   Red indicates a configuration with minimal/no verification.
   Users must make their own assessment of verification readiness for any tapeout.
-* v0.92 of the RISC-V Bit Manipulation Extension is supported.
-  This is *not ratified* and there may be changes for the v1.0 ratified version.
+* v.1.0.0 of the RISC-V Bit-Manipulation Extension is supported as well as the remaining sub-extensions of draft v.0.93 of the bitmanip spec.
+  The latter are *not ratified* and there may be changes before ratification.
   See [Standards Compliance](https://ibex-core.readthedocs.io/en/latest/01_overview/compliance.html) in the Ibex documentation for more information.
 
 ## Documentation
@@ -51,6 +56,17 @@ Notes:
 The Ibex user manual can be
 [read online at ReadTheDocs](https://ibex-core.readthedocs.io/en/latest/). It is also contained in
 the `doc` folder of this repository.
+
+## Examples
+
+The Ibex repository includes [Simple System](examples/simple_system/README.md).
+This is an intentionally simple integration of Ibex with a basic system that targets simulation.
+It is intended to provide an easy way to get bare metal binaries running on Ibex in simulation.
+
+A more complete example can be found in the [Ibex Demo System repository](https://github.com/lowrisc/ibex-demo-system).
+In particular it includes a integration of the [PULP RISC-V debug module](https://github.com/pulp-platform/riscv-dbg).
+It targets the [Arty A7 FPGA board from Digilent](https://digilent.com/shop/arty-a7-artix-7-fpga-development-board/) and supports debugging via OpenOCD and GDB over USB (no external JTAG probe required).
+The Ibex Demo System is maintained by lowRISC but is not an official part of Ibex.
 
 ## Contributing
 
@@ -69,7 +85,7 @@ When contributing SystemVerilog source code, please try to be consistent and adh
 coding style guide](https://github.com/lowRISC/style-guides/blob/master/VerilogCodingStyle.md).
 
 When contributing C or C++ source code, please try to adhere to [the OpenTitan C++ coding style
-guide](https://docs.opentitan.org/doc/rm/c_cpp_coding_style/).
+guide](https://opentitan.org/book/doc/contributing/style_guides/c_cpp_coding_style.html).
 All C and C++ code should be formatted with clang-format before committing.
 Either run `clang-format -i filename.cc` or `git clang-format` on added files.
 
@@ -96,9 +112,3 @@ License, Version 2.0 (see LICENSE for full text).
 
 Many people have contributed to Ibex through the years. Please have a look at
 the [credits file](CREDITS.md) and the commit history for more information.
-
-## References
-1. [Schiavone, Pasquale Davide, et al. "Slow and steady wins the race? A comparison of
- ultra-low-power RISC-V cores for Internet-of-Things applications."
- _27th International Symposium on Power and Timing Modeling, Optimization and Simulation
- (PATMOS 2017)_](https://doi.org/10.1109/PATMOS.2017.8106976)

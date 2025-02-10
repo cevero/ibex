@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 {
@@ -64,8 +64,19 @@
 
   build_modes: [
     {
+      name: riviera_gui
+      is_sim_mode: 1
+      build_opts: []
+      run_opts: []
+    }
+    {
       name: riviera_waves
       is_sim_mode: 1
+    }
+    {
+      name: riviera_waves_off
+      is_sim_mode: 1
+      build_opts: []
     }
     // TODO support coverage for riviera
     {

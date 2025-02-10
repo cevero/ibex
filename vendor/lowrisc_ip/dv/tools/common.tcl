@@ -1,4 +1,4 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -16,9 +16,15 @@ if {[info exists ::env(WAVES)]} {
   set waves "$::env(WAVES)"
 }
 
+set gui 0
+if {[info exists ::env(GUI)]} {
+  set gui "$::env(GUI)"
+}
+
 set tb_top "tb"
-if {[info exists ::(TB_TOP)]} {
+if {[info exists ::env(TB_TOP)]} {
   set tb_top "$::env(TB_TOP)"
+} else {
   puts "WARNING: TB_TOP environment variable not set - using \"tb\" as the
         top level testbench hierarchy."
 }

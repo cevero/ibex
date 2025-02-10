@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -15,11 +15,10 @@
 
 `include "prim_assert.sv"
 
-module prim_ram_1p_adv #(
+module prim_ram_1p_adv import prim_ram_1p_pkg::*; #(
   parameter  int Depth                = 512,
   parameter  int Width                = 32,
   parameter  int DataBitsPerMask      = 1,  // Number of data bits per bit of write mask
-  parameter  int CfgW                 = 8,  // WTC, RTC, etc
   parameter      MemInitFile          = "", // VMEM file to initialize the memory with
 
   // Configurations
@@ -27,6 +26,11 @@ module prim_ram_1p_adv #(
   parameter  bit EnableParity         = 0, // Enables per-Byte Parity
   parameter  bit EnableInputPipeline  = 0, // Adds an input register (read latency +1)
   parameter  bit EnableOutputPipeline = 0, // Adds an output register (read latency +1)
+
+  // This switch allows to switch to standard Hamming ECC instead of the HSIAO ECC.
+  // It is recommended to leave this parameter at its default setting (HSIAO),
+  // since this results in a more compact and faster implementation.
+  parameter bit HammingECC            = 0,
 
   localparam int Aw                   = prim_util_pkg::vbits(Depth)
 ) (
@@ -43,11 +47,20 @@ module prim_ram_1p_adv #(
   output logic [1:0]         rerror_o, // Bit1: Uncorrectable, Bit0: Correctable
 
   // config
-  input [CfgW-1:0] cfg_i
+  input ram_1p_cfg_t         cfg_i,
+
+  // When detecting multi-bit encoding errors, raise alert.
+  output logic               alert_o
 );
 
-  logic [CfgW-1:0] unused_cfg;
-  assign unused_cfg = cfg_i;
+  import prim_mubi_pkg::mubi4_t;
+  import prim_mubi_pkg::mubi4_and_hi;
+  import prim_mubi_pkg::mubi4_bool_to_mubi;
+  import prim_mubi_pkg::mubi4_test_invalid;
+  import prim_mubi_pkg::mubi4_test_true_loose;
+  import prim_mubi_pkg::MuBi4True;
+  import prim_mubi_pkg::MuBi4False;
+  import prim_mubi_pkg::MuBi4Width;
 
   `ASSERT_INIT(CannotHaveEccAndParity_A, !(EnableParity && EnableECC))
 
@@ -72,15 +85,22 @@ module prim_ram_1p_adv #(
   // RAM Primitive Instance //
   ////////////////////////////
 
-  logic                    req_q,    req_d ;
-  logic                    write_q,  write_d ;
-  logic [Aw-1:0]           addr_q,   addr_d ;
-  logic [TotalWidth-1:0]   wdata_q,  wdata_d ;
-  logic [TotalWidth-1:0]   wmask_q,  wmask_d ;
-  logic                    rvalid_q, rvalid_d, rvalid_sram_q ;
-  logic [Width-1:0]        rdata_q,  rdata_d ;
+  mubi4_t                  req_q,     req_d,    req_buf_d ;
+  logic [MuBi4Width-1:0]   req_buf_b_d;
+  logic                    req_q_b ;
+  mubi4_t                  write_q,   write_d,  write_buf_d ;
+  logic [MuBi4Width-1:0]   write_buf_b_d;
+  logic                    write_q_b ;
+  logic [Aw-1:0]           addr_q,    addr_d ;
+  logic [TotalWidth-1:0]   wdata_q,   wdata_d ;
+  logic [TotalWidth-1:0]   wmask_q,   wmask_d ;
+  mubi4_t                  rvalid_q,  rvalid_d, rvalid_sram_q, rvalid_sram_d ;
+  logic [Width-1:0]        rdata_q,   rdata_d ;
   logic [TotalWidth-1:0]   rdata_sram ;
-  logic [1:0]              rerror_q, rerror_d ;
+  logic [1:0]              rerror_q,  rerror_d ;
+
+  assign req_q_b = mubi4_test_true_loose(req_q);
+  assign write_q_b = mubi4_test_true_loose(write_q);
 
   prim_ram_1p #(
     .MemInitFile     (MemInitFile),
@@ -91,28 +111,49 @@ module prim_ram_1p_adv #(
   ) u_mem (
     .clk_i,
 
-    .req_i    (req_q),
-    .write_i  (write_q),
+    .req_i    (req_q_b),
+    .write_i  (write_q_b),
     .addr_i   (addr_q),
     .wdata_i  (wdata_q),
     .wmask_i  (wmask_q),
-    .rdata_o  (rdata_sram)
+    .rdata_o  (rdata_sram),
+    .cfg_i
   );
+
+  assign rvalid_sram_d = mubi4_and_hi(req_q, mubi4_t'(~write_q));
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
-      rvalid_sram_q <= 1'b0;
+      rvalid_sram_q <= MuBi4False;
     end else begin
-      rvalid_sram_q <= req_q & ~write_q;
+      rvalid_sram_q <= rvalid_sram_d;
     end
   end
 
-  assign req_d              = req_i;
-  assign write_d            = write_i;
+  assign req_d              = mubi4_bool_to_mubi(req_i);
+  assign write_d            = mubi4_bool_to_mubi(write_i);
   assign addr_d             = addr_i;
-  assign rvalid_o           = rvalid_q;
+  assign rvalid_o           = mubi4_test_true_loose(rvalid_q);
   assign rdata_o            = rdata_q;
   assign rerror_o           = rerror_q;
+
+  prim_buf #(
+    .Width(MuBi4Width)
+  ) u_req_d_buf (
+    .in_i (req_d),
+    .out_o(req_buf_b_d)
+  );
+
+  assign req_buf_d = mubi4_t'(req_buf_b_d);
+
+  prim_buf #(
+    .Width(MuBi4Width)
+  ) u_write_d_buf (
+    .in_i (write_d),
+    .out_o(write_buf_b_d)
+  );
+
+  assign write_buf_d = mubi4_t'(write_buf_b_d);
 
   /////////////////////////////
   // ECC / Parity Generation //
@@ -132,21 +173,53 @@ module prim_ram_1p_adv #(
     assign wmask_d = {TotalWidth{1'b1}};
 
     if (Width == 16) begin : gen_secded_22_16
-      prim_secded_22_16_enc u_enc (.in(wdata_i), .out(wdata_d));
-      prim_secded_22_16_dec u_dec (
-        .in         (rdata_sram),
-        .d_o        (rdata_d[0+:Width]),
-        .syndrome_o ( ),
-        .err_o      (rerror_d)
-      );
+      if (HammingECC) begin : gen_hamming
+        prim_secded_inv_hamming_22_16_enc u_enc (
+          .data_i(wdata_i),
+          .data_o(wdata_d)
+        );
+        prim_secded_inv_hamming_22_16_dec u_dec (
+          .data_i     (rdata_sram),
+          .data_o     (rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (rerror_d)
+        );
+      end else begin : gen_hsiao
+        prim_secded_inv_22_16_enc u_enc (
+          .data_i(wdata_i),
+          .data_o(wdata_d)
+        );
+        prim_secded_inv_22_16_dec u_dec (
+          .data_i     (rdata_sram),
+          .data_o     (rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (rerror_d)
+        );
+      end
     end else if (Width == 32) begin : gen_secded_39_32
-      prim_secded_39_32_enc u_enc (.in(wdata_i), .out(wdata_d));
-      prim_secded_39_32_dec u_dec (
-        .in         (rdata_sram),
-        .d_o        (rdata_d[0+:Width]),
-        .syndrome_o ( ),
-        .err_o      (rerror_d)
-      );
+      if (HammingECC) begin : gen_hamming
+        prim_secded_inv_hamming_39_32_enc u_enc (
+          .data_i(wdata_i),
+          .data_o(wdata_d)
+        );
+        prim_secded_inv_hamming_39_32_dec u_dec (
+          .data_i     (rdata_sram),
+          .data_o     (rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (rerror_d)
+        );
+      end else begin : gen_hsiao
+        prim_secded_inv_39_32_enc u_enc (
+          .data_i(wdata_i),
+          .data_o(wdata_d)
+        );
+        prim_secded_inv_39_32_dec u_dec (
+          .data_i     (rdata_sram),
+          .data_o     (rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (rerror_d)
+        );
+      end
     end
 
   end else if (EnableParity) begin : gen_byte_parity
@@ -187,24 +260,55 @@ module prim_ram_1p_adv #(
 
   if (EnableInputPipeline) begin : gen_regslice_input
     // Put the register slices between ECC encoding to SRAM port
+
+    // If no ECC or parity is used, do not use prim_flop to allow synthesis
+    // tool to optimize the registers.
+    if (EnableECC || EnableParity) begin : gen_prim_flop
+      prim_flop #(
+        .Width(MuBi4Width),
+        .ResetValue(MuBi4Width'(MuBi4False))
+      ) u_write_flop (
+        .clk_i,
+        .rst_ni,
+        .d_i(MuBi4Width'(write_buf_d)),
+        .q_o({write_q})
+      );
+
+      prim_flop #(
+        .Width(MuBi4Width),
+        .ResetValue(MuBi4Width'(MuBi4False))
+      ) u_req_flop (
+        .clk_i,
+        .rst_ni,
+        .d_i(MuBi4Width'(req_buf_d)),
+        .q_o({req_q})
+      );
+    end else begin: gen_no_prim_flop
+      always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni) begin
+          write_q <= MuBi4False;
+          req_q   <= MuBi4False;
+        end else begin
+          write_q <= write_buf_d;
+          req_q   <= req_buf_d;
+        end
+      end
+    end
+
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        req_q   <= '0;
-        write_q <= '0;
         addr_q  <= '0;
         wdata_q <= '0;
         wmask_q <= '0;
       end else begin
-        req_q   <= req_d;
-        write_q <= write_d;
         addr_q  <= addr_d;
         wdata_q <= wdata_d;
         wmask_q <= wmask_d;
       end
     end
   end else begin : gen_dirconnect_input
-    assign req_q   = req_d;
-    assign write_q = write_d;
+    assign req_q   = req_buf_d;
+    assign write_q = write_buf_d;
     assign addr_q  = addr_d;
     assign wdata_q = wdata_d;
     assign wmask_q = wmask_d;
@@ -212,23 +316,47 @@ module prim_ram_1p_adv #(
 
   if (EnableOutputPipeline) begin : gen_regslice_output
     // Put the register slices between ECC decoding to output
+
+    // If no ECC or parity is used, do not use prim_flop to allow synthesis
+    // tool to optimize the registers.
+    if (EnableECC || EnableParity) begin : gen_prim_rvalid_flop
+      prim_flop #(
+        .Width(MuBi4Width),
+        .ResetValue(MuBi4Width'(MuBi4False))
+      ) u_rvalid_flop (
+        .clk_i,
+        .rst_ni,
+        .d_i(MuBi4Width'(rvalid_d)),
+        .q_o({rvalid_q})
+      );
+    end else begin: gen_no_prim_rvalid_flop
+      always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni) begin
+          rvalid_q <= MuBi4False;
+        end else begin
+          rvalid_q <= rvalid_d;
+        end
+      end
+    end
+
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        rvalid_q <= '0;
         rdata_q  <= '0;
         rerror_q <= '0;
       end else begin
-        rvalid_q <= rvalid_d;
         rdata_q  <= rdata_d;
         // tie to zero if the read data is not valid
-        rerror_q <= rerror_d & {2{rvalid_d}};
+        rerror_q <= rerror_d & {2{mubi4_test_true_loose(rvalid_d)}};
       end
     end
   end else begin : gen_dirconnect_output
     assign rvalid_q = rvalid_d;
     assign rdata_q  = rdata_d;
     // tie to zero if the read data is not valid
-    assign rerror_q = rerror_d & {2{rvalid_d}};
+    assign rerror_q = rerror_d & {2{mubi4_test_true_loose(rvalid_d)}};
   end
+
+  assign alert_o = mubi4_test_invalid(req_q) | mubi4_test_invalid(write_q) |
+                   mubi4_test_invalid(rvalid_q) | mubi4_test_invalid(rvalid_sram_q);
 
 endmodule : prim_ram_1p_adv

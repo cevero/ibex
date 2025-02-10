@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -15,11 +15,10 @@
 
 `include "prim_assert.sv"
 
-module prim_ram_2p_async_adv #(
+module prim_ram_2p_async_adv import prim_ram_2p_pkg::*; #(
   parameter  int Depth                = 512,
   parameter  int Width                = 32,
   parameter  int DataBitsPerMask      = 1,  // Number of data bits per bit of write mask
-  parameter  int CfgW                 = 8,  // WTC, RTC, etc
   parameter      MemInitFile          = "", // VMEM file to initialize the memory with
 
   // Configurations
@@ -27,6 +26,11 @@ module prim_ram_2p_async_adv #(
   parameter  bit EnableParity         = 0, // Enables per-Byte Parity
   parameter  bit EnableInputPipeline  = 0, // Adds an input register (read latency +1)
   parameter  bit EnableOutputPipeline = 0, // Adds an output register (read latency +1)
+
+  // This switch allows to switch to standard Hamming ECC instead of the HSIAO ECC.
+  // It is recommended to leave this parameter at its default setting (HSIAO),
+  // since this results in a more compact and faster implementation.
+  parameter bit HammingECC            = 0,
 
   localparam int Aw                   = prim_util_pkg::vbits(Depth)
 ) (
@@ -54,11 +58,9 @@ module prim_ram_2p_async_adv #(
   output logic [1:0]       b_rerror_o, // Bit1: Uncorrectable, Bit0: Correctable
 
   // config
-  input [CfgW-1:0] cfg_i
+  input ram_2p_cfg_t       cfg_i
 );
 
-  logic [CfgW-1:0] unused_cfg;
-  assign unused_cfg = cfg_i;
 
   `ASSERT_INIT(CannotHaveEccAndParity_A, !(EnableParity && EnableECC))
 
@@ -125,7 +127,9 @@ module prim_ram_2p_async_adv #(
     .b_addr_i   (b_addr_q),
     .b_wdata_i  (b_wdata_q),
     .b_wmask_i  (b_wmask_q),
-    .b_rdata_o  (b_rdata_sram)
+    .b_rdata_o  (b_rdata_sram),
+
+    .cfg_i
   );
 
   always_ff @(posedge clk_a_i or negedge rst_a_ni) begin
@@ -176,20 +180,49 @@ module prim_ram_2p_async_adv #(
     assign b_wmask_d = {TotalWidth{1'b1}};
 
     if (Width == 32) begin : gen_secded_39_32
-      prim_secded_39_32_enc u_enc_a (.in(a_wdata_i), .out(a_wdata_d));
-      prim_secded_39_32_dec u_dec_a (
-        .in         (a_rdata_sram),
-        .d_o        (a_rdata_d[0+:Width]),
-        .syndrome_o ( ),
-        .err_o      (a_rerror_d)
-      );
-      prim_secded_39_32_enc u_enc_b (.in(b_wdata_i), .out(b_wdata_d));
-      prim_secded_39_32_dec u_dec_b (
-        .in         (b_rdata_sram),
-        .d_o        (b_rdata_d[0+:Width]),
-        .syndrome_o ( ),
-        .err_o      (b_rerror_d)
-      );
+      if (HammingECC) begin : gen_hamming
+        prim_secded_inv_hamming_39_32_enc u_enc_a (
+          .data_i(a_wdata_i),
+          .data_o(a_wdata_d)
+        );
+        prim_secded_inv_hamming_39_32_dec u_dec_a (
+          .data_i     (a_rdata_sram),
+          .data_o     (a_rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (a_rerror_d)
+        );
+        prim_secded_inv_hamming_39_32_enc u_enc_b (
+          .data_i(b_wdata_i),
+          .data_o(b_wdata_d)
+        );
+        prim_secded_inv_hamming_39_32_dec u_dec_b (
+          .data_i     (b_rdata_sram),
+          .data_o     (b_rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (b_rerror_d)
+        );
+      end else begin : gen_hsiao
+        prim_secded_inv_39_32_enc u_enc_a (
+          .data_i(a_wdata_i),
+          .data_o(a_wdata_d)
+        );
+        prim_secded_inv_39_32_dec u_dec_a (
+          .data_i     (a_rdata_sram),
+          .data_o     (a_rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (a_rerror_d)
+        );
+        prim_secded_inv_39_32_enc u_enc_b (
+          .data_i(b_wdata_i),
+          .data_o(b_wdata_d)
+        );
+        prim_secded_inv_39_32_dec u_dec_b (
+          .data_i     (b_rdata_sram),
+          .data_o     (b_rdata_d[0+:Width]),
+          .syndrome_o ( ),
+          .err_o      (b_rerror_d)
+        );
+      end
     end
   end else if (EnableParity) begin : gen_byte_parity
 

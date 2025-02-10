@@ -139,6 +139,11 @@ def parse_iss_yaml(iss, iss_yaml, isa, setting_dir, debug_cmd):
     """
     logging.info("Processing ISS setup file : {}".format(iss_yaml))
     yaml_data = read_yaml(iss_yaml)
+
+    # Path to the "scripts" subdirectory
+    my_path = os.path.dirname(os.path.realpath(__file__))
+    scripts_dir = os.path.join(my_path, "scripts")   # Search for matched ISS
+
     # Search for matched ISS
     for entry in yaml_data:
         if entry['iss'] == iss:
@@ -147,7 +152,7 @@ def parse_iss_yaml(iss, iss_yaml, isa, setting_dir, debug_cmd):
             cmd = re.sub("\<path_var\>",
                          get_env_var(entry['path_var'], debug_cmd=debug_cmd),
                          cmd)
-            m = re.search(r"rv(?P<xlen>[0-9]+?)(?P<variant>[a-z]+?)$", isa)
+            m = re.search(r"rv(?P<xlen>[0-9]+?)(?P<variant>[a-zA-Z_]+?)$", isa)
             if m:
                 cmd = re.sub("\<xlen\>", m.group('xlen'), cmd)
             else:
@@ -161,6 +166,7 @@ def parse_iss_yaml(iss, iss_yaml, isa, setting_dir, debug_cmd):
                     cmd = re.sub("\<variant\>", variant, cmd)
             else:
                 cmd = re.sub("\<variant\>", isa, cmd)
+            cmd = re.sub("\<scripts_path\>", scripts_dir, cmd)
             return cmd
     logging.error("Cannot find ISS {}".format(iss))
     sys.exit(RET_FAIL)
@@ -302,7 +308,9 @@ def do_simulate(sim_cmd, simulator, test_list, cwd, sim_opts, seed_gen,
                               (" --log_file_name={}/sim_{}_{}{}.log ".format(
                                   output_dir,
                                   test['test'], i, log_suffix)) + \
-                              (" --target=%s " % (target))
+                              (" --target=%s " % (target)) + \
+                              (" --gen_test=%s " % (test['gen_test'])) + \
+                              (" --seed={} ".format(rand_seed))
                     else:
                         cmd = lsf_cmd + " " + sim_cmd.rstrip() + \
                               (" +UVM_TESTNAME={} ".format(test['gen_test'])) + \
@@ -379,11 +387,21 @@ def gen(test_list, argv, output_dir, cwd):
     # Run the instruction generator
     if not argv.co:
         seed_gen = SeedGen(argv.start_seed, argv.seed, argv.seed_yaml)
+        if argv.simulator == 'pyflow':
+            """Default timeout of Pyflow is 20 minutes, if the user
+               doesn't specified their own gen_timeout value from CMD
+            """
+            if argv.gen_timeout == 360:
+                gen_timeout = 1200
+            else:
+                gen_timeout = argv.gen_timeout
+        else:
+            gen_timeout = argv.gen_timeout
         do_simulate(sim_cmd, argv.simulator, test_list, cwd, argv.sim_opts,
                     seed_gen,
                     argv.csr_yaml, argv.isa, argv.end_signature_addr,
                     argv.lsf_cmd,
-                    argv.gen_timeout, argv.log_suffix, argv.batch_size,
+                    gen_timeout, argv.log_suffix, argv.batch_size,
                     output_dir,
                     argv.verbose, check_return_code, argv.debug, argv.target)
 
@@ -650,7 +668,7 @@ def iss_sim(test_list, output_dir, iss_list, iss_yaml, iss_opts,
                     prefix = ("{}/asm_test/{}_{}".format(
                         output_dir, test['test'], i))
                     elf = prefix + ".o"
-                    log = ("{}/{}.{}.log".format(log_dir, test['test'], i))
+                    log = ("{}/{}_{}.log".format(log_dir, test['test'], i))
                     cmd = get_iss_cmd(base_cmd, elf, log)
                     if 'iss_opts' in test:
                         cmd += ' '
@@ -756,7 +774,8 @@ def parse_args(cwd):
 
     parser.add_argument("--target", type=str, default="rv32imc",
                         help="Run the generator with pre-defined targets: \
-                            rv32imc, rv32i, rv32imafdc, rv64imc, rv64gc")
+                            rv32imc, rv32i, rv32imafdc, rv64imc, rv64gc, \
+                            rv64imafdc")
     parser.add_argument("-o", "--output", type=str,
                         help="Output directory name", dest="o")
     parser.add_argument("-tl", "--testlist", type=str, default="",
@@ -948,6 +967,9 @@ def load_config(args, cwd):
         elif args.target == "ml":
             args.mabi = "lp64"
             args.isa = "rv64imc"
+        elif args.target == "rv64imafdc":
+            args.mabi = "lp64"
+            args.isa = "rv64imafdc"
         else:
             sys.exit("Unsupported pre-defined target: {}".format(args.target))
     else:

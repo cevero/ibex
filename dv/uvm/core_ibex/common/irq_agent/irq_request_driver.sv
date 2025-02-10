@@ -6,7 +6,7 @@ class irq_request_driver extends uvm_driver #(irq_seq_item);
 
   // The virtual interface used to drive and view HDL signals.
   protected virtual irq_if vif;
-`uvm_component_utils(irq_request_driver)
+  `uvm_component_utils(irq_request_driver)
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
@@ -18,14 +18,19 @@ class irq_request_driver extends uvm_driver #(irq_seq_item);
 
   virtual task run_phase(uvm_phase phase);
     reset_signals();
+    wait (vif.driver_cb.reset === 1'b0);
     forever begin
-      fork : drive_irq
-        get_and_drive();
-        wait (vif.driver_cb.reset === 1'b1);
-      join_any
-      // Will only reach here on mid-test reset
-      disable fork;
-      handle_reset();
+      fork begin : isolation_fork
+        fork : drive_irq
+          // Setup a single get_REQ -> drive -> send_RSP long-running task.
+          // This seq_item contains all signals on the interface at once.
+          get_and_drive();
+          wait (vif.driver_cb.reset === 1'b1);
+        join_any
+        // Will only reach here on mid-test reset
+        disable fork;
+        handle_reset();
+      end join
     end
   endtask : run_phase
 
@@ -41,8 +46,9 @@ class irq_request_driver extends uvm_driver #(irq_seq_item);
     reset_signals();
   endtask
 
+  // Every cycle, check for a new REQ and drive it.
+  // Simultaneously, return the same REQ as a RSP back to the sequence.
   virtual protected task get_and_drive();
-    wait (vif.driver_cb.reset === 1'b0);
     forever begin
       seq_item_port.try_next_item(req);
       if (req != null) begin
@@ -57,7 +63,7 @@ class irq_request_driver extends uvm_driver #(irq_seq_item);
   endtask : get_and_drive
 
   virtual protected task reset_signals();
-    @(negedge vif.driver_cb.reset);
+    @(posedge vif.driver_cb.reset);
     drive_reset_value();
   endtask : reset_signals
 

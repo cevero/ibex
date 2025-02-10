@@ -107,18 +107,8 @@ module ibex_tracer (
     end
   end
 
-  function automatic void printbuffer_dumpline();
+  function automatic void printbuffer_dumpline(int fh);
     string rvfi_insn_str;
-
-    if (file_handle == 32'h0) begin
-      string file_name_base = "trace_core";
-      $value$plusargs("ibex_tracer_file_base=%s", file_name_base);
-      $sformat(file_name, "%s_%h.log", file_name_base, hart_id_i);
-
-      $display("%m: Writing execution trace to %s", file_name);
-      file_handle = $fopen(file_name, "w");
-      $fwrite(file_handle, "Time\tCycle\tPC\tInsn\tDecoded instruction\tRegister and memory contents\n");
-    end
 
     // Write compressed instructions as four hex digits (16 bit word), and
     // uncompressed ones as 8 hex digits (32 bit words).
@@ -128,32 +118,33 @@ module ibex_tracer (
       rvfi_insn_str = $sformatf("%h", rvfi_insn);
     end
 
-    $fwrite(file_handle, "%15t\t%d\t%h\t%s\t%s\t", $time, cycle, rvfi_pc_rdata, rvfi_insn_str, decoded_str);
+    $fwrite(fh, "%15t\t%d\t%h\t%s\t%s\t",
+            $time, cycle, rvfi_pc_rdata, rvfi_insn_str, decoded_str);
 
     if ((data_accessed & RS1) != 0) begin
-      $fwrite(file_handle, " %s:0x%08x", reg_addr_to_str(rvfi_rs1_addr), rvfi_rs1_rdata);
+      $fwrite(fh, " %s:0x%08x", reg_addr_to_str(rvfi_rs1_addr), rvfi_rs1_rdata);
     end
     if ((data_accessed & RS2) != 0) begin
-      $fwrite(file_handle, " %s:0x%08x", reg_addr_to_str(rvfi_rs2_addr), rvfi_rs2_rdata);
+      $fwrite(fh, " %s:0x%08x", reg_addr_to_str(rvfi_rs2_addr), rvfi_rs2_rdata);
     end
     if ((data_accessed & RS3) != 0) begin
-      $fwrite(file_handle, " %s:0x%08x", reg_addr_to_str(rvfi_rs3_addr), rvfi_rs3_rdata);
+      $fwrite(fh, " %s:0x%08x", reg_addr_to_str(rvfi_rs3_addr), rvfi_rs3_rdata);
     end
     if ((data_accessed & RD) != 0) begin
-      $fwrite(file_handle, " %s=0x%08x", reg_addr_to_str(rvfi_rd_addr), rvfi_rd_wdata);
+      $fwrite(fh, " %s=0x%08x", reg_addr_to_str(rvfi_rd_addr), rvfi_rd_wdata);
     end
     if ((data_accessed & MEM) != 0) begin
-      $fwrite(file_handle, " PA:0x%08x", rvfi_mem_addr);
+      $fwrite(fh, " PA:0x%08x", rvfi_mem_addr);
 
-      if (rvfi_mem_rmask != 4'b0000) begin
-        $fwrite(file_handle, " store:0x%08x", rvfi_mem_wdata);
-      end
       if (rvfi_mem_wmask != 4'b0000) begin
-        $fwrite(file_handle, " load:0x%08x", rvfi_mem_rdata);
+        $fwrite(fh, " store:0x%08x", rvfi_mem_wdata);
+      end
+      if (rvfi_mem_rmask != 4'b0000) begin
+        $fwrite(fh, " load:0x%08x", rvfi_mem_rdata);
       end
     end
 
-    $fwrite(file_handle, "\n");
+    $fwrite(fh, "\n");
   endfunction
 
 
@@ -488,8 +479,9 @@ module ibex_tracer (
              rvfi_insn[30:25], rvfi_insn[11:8], 1'b0 });
     branch_target = rvfi_pc_rdata + imm;
 
-    data_accessed = RS1 | RS2 | RD;
-    decoded_str = $sformatf("%s\tx%0d,x%0d,%0x", mnemonic, rvfi_rs1_addr, rvfi_rs2_addr, branch_target);
+    data_accessed = RS1 | RS2;
+    decoded_str = $sformatf("%s\tx%0d,x%0d,%0x",
+                            mnemonic, rvfi_rs1_addr, rvfi_rs2_addr, branch_target);
   endfunction
 
   function automatic void decode_csr_insn(input string mnemonic);
@@ -502,9 +494,11 @@ module ibex_tracer (
 
     if (!rvfi_insn[14]) begin
       data_accessed |= RS1;
-      decoded_str = $sformatf("%s\tx%0d,%s,x%0d", mnemonic, rvfi_rd_addr, csr_name, rvfi_rs1_addr);
+      decoded_str = $sformatf("%s\tx%0d,%s,x%0d",
+                              mnemonic, rvfi_rd_addr, csr_name, rvfi_rs1_addr);
     end else begin
-      decoded_str = $sformatf("%s\tx%0d,%s,%0d", mnemonic, rvfi_rd_addr, csr_name, { 27'b0, rvfi_insn[19:15]});
+      decoded_str = $sformatf("%s\tx%0d,%s,%0d",
+                              mnemonic, rvfi_rd_addr, csr_name, {27'b0, rvfi_insn[19:15]});
     end
   endfunction
 
@@ -695,8 +689,11 @@ module ibex_tracer (
     if (!rvfi_insn[14]) begin
       // regular store
       data_accessed = RS1 | RS2 | MEM;
-      decoded_str = $sformatf("%s\tx%0d,%0d(x%0d)", mnemonic, rvfi_rs2_addr,
-                      $signed({ {20 {rvfi_insn[31]}}, rvfi_insn[31:25], rvfi_insn[11:7] }), rvfi_rs1_addr);
+      decoded_str = $sformatf("%s\tx%0d,%0d(x%0d)",
+                              mnemonic,
+                              rvfi_rs2_addr,
+                              $signed({{20{rvfi_insn[31]}}, rvfi_insn[31:25], rvfi_insn[11:7]}),
+                              rvfi_rs1_addr);
     end else begin
       decode_mnemonic("INVALID");
     end
@@ -739,14 +736,32 @@ module ibex_tracer (
   // close output file for writing
   final begin
     if (file_handle != 32'h0) begin
-      $fclose(file_handle);
+      // This dance with "fh" is a bit silly. Some versions of Verilator treat a call of $fclose(xx)
+      // as a blocking assignment to xx. They then complain about the mixture with that an the
+      // non-blocking assignment we use when opening the file. The bug is fixed with recent versions
+      // of Verilator, but this hack is probably worth it for now.
+      static int fh = file_handle;
+      $fclose(fh);
     end
   end
 
   // log execution
-  always_ff @(posedge clk_i) begin
+  always @(posedge clk_i) begin
     if (rvfi_valid && trace_log_enable) begin
-      printbuffer_dumpline();
+      static int fh = file_handle;
+
+      if (fh == 32'h0) begin
+        static string file_name_base = "trace_core";
+        void'($value$plusargs("ibex_tracer_file_base=%s", file_name_base));
+        $sformat(file_name, "%s_%h.log", file_name_base, hart_id_i);
+
+        $display("%m: Writing execution trace to %s", file_name);
+        fh = $fopen(file_name, "w");
+        file_handle <= fh;
+        $fwrite(fh, "Time\tCycle\tPC\tInsn\tDecoded instruction\tRegister and memory contents\n");
+      end
+
+      printbuffer_dumpline(fh);
     end
   end
 
@@ -847,9 +862,12 @@ module ibex_tracer (
         INSN_SLTIU:      decode_i_insn("sltiu");
         INSN_XORI:       decode_i_insn("xori");
         INSN_ORI:        decode_i_insn("ori");
-        // Version 0.92 of the Bitmanip Extension defines the pseudo-instruction
-        // zext.b rd rs = andi rd, rs, 255.
-        // Currently instruction set simulators don't output this pseudo-instruction.
+        // Unlike the ratified v.1.0.0 bitmanip extension, the v.0.94 draft extension continues to
+        // define the pseudo-instruction
+        //   zext.b rd rs = andi rd, rs, 255.
+        // However, for now the tracer doesn't emit this due to a lack of support in the LLVM and
+        // GCC toolchains. Enabling this functionality when the time is right is tracked in
+        // https://github.com/lowRISC/ibex/issues/1228
         INSN_ANDI:       decode_i_insn("andi");
         // INSN_ANDI:begin
           // casez (rvfi_insn)
@@ -899,12 +917,12 @@ module ibex_tracer (
         // MISC-MEM
         INSN_FENCE:      decode_fence();
         INSN_FENCEI:     decode_mnemonic("fence.i");
+        // RV32B - ZBA
+        INSN_SH1ADD:     decode_r_insn("sh1add");
+        INSN_SH2ADD:     decode_r_insn("sh2add");
+        INSN_SH3ADD:     decode_r_insn("sh3add");
         // RV32B - ZBB
-        INSN_SLOI:       decode_i_shift_insn("sloi");
-        INSN_SROI:       decode_i_shift_insn("sroi");
         INSN_RORI:       decode_i_shift_insn("rori");
-        INSN_SLO:        decode_r_insn("slo");
-        INSN_SRO:        decode_r_insn("sro");
         INSN_ROL:        decode_r_insn("rol");
         INSN_ROR:        decode_r_insn("ror");
         INSN_MIN:        decode_r_insn("min");
@@ -914,9 +932,11 @@ module ibex_tracer (
         INSN_XNOR:       decode_r_insn("xnor");
         INSN_ORN:        decode_r_insn("orn");
         INSN_ANDN:       decode_r_insn("andn");
-        // Version 0.92 of the Bitmanip Extension defines the pseudo-instruction
-        // zext.h rd rs = pack rd, rs, zero.
-        // Currently instruction set simulators don't output this pseudo-instruction.
+        // The ratified v.1.0.0 bitmanip extension defines the pseudo-instruction
+        //   zext.h rd rs = pack rd, rs, zero.
+        // However, for now the tracer doesn't emit this due to a lack of support in the LLVM and
+        // GCC toolchains. Enabling this functionality when the time is right is tracked in
+        // https://github.com/lowRISC/ibex/issues/1228
         INSN_PACK:       decode_r_insn("pack");
         // INSN_PACK: begin
           // casez (rvfi_insn)
@@ -928,21 +948,21 @@ module ibex_tracer (
         INSN_PACKU:      decode_r_insn("packu");
         INSN_CLZ:        decode_r1_insn("clz");
         INSN_CTZ:        decode_r1_insn("ctz");
-        INSN_PCNT:       decode_r1_insn("pcnt");
+        INSN_CPOP:       decode_r1_insn("cpop");
         INSN_SEXTB:      decode_r1_insn("sext.b");
         INSN_SEXTH:      decode_r1_insn("sext.h");
         // RV32B - ZBS
-        INSN_SBCLRI:     decode_i_insn("sbclri");
-        INSN_SBSETI:     decode_i_insn("sbseti");
-        INSN_SBINVI:     decode_i_insn("sbinvi");
-        INSN_SBEXTI:     decode_i_insn("sbexti");
-        INSN_SBCLR:      decode_r_insn("sbclr");
-        INSN_SBSET:      decode_r_insn("sbset");
-        INSN_SBINV:      decode_r_insn("sbinv");
-        INSN_SBEXT:      decode_r_insn("sbext");
+        INSN_BCLRI:     decode_i_shift_insn("bclri");
+        INSN_BSETI:     decode_i_shift_insn("bseti");
+        INSN_BINVI:     decode_i_shift_insn("binvi");
+        INSN_BEXTI:     decode_i_shift_insn("bexti");
+        INSN_BCLR:      decode_r_insn("bclr");
+        INSN_BSET:      decode_r_insn("bset");
+        INSN_BINV:      decode_r_insn("binv");
+        INSN_BEXT:      decode_r_insn("bext");
         // RV32B - ZBE
-        INSN_BDEP:       decode_r_insn("bdep");
-        INSN_BEXT:       decode_r_insn("bext");
+        INSN_BDECOMPRESS: decode_r_insn("bdecompress");
+        INSN_BCOMPRESS:   decode_r_insn("bcompress");
         // RV32B - ZBP
         INSN_GREV:       decode_r_insn("grev");
         INSN_GREVI: begin
@@ -1018,6 +1038,13 @@ module ibex_tracer (
             default:       decode_i_insn("unshfli");
           endcase
         end
+        INSN_XPERM_N:    decode_r_insn("xperm_n");
+        INSN_XPERM_B:    decode_r_insn("xperm_b");
+        INSN_XPERM_H:    decode_r_insn("xperm_h");
+        INSN_SLO:        decode_r_insn("slo");
+        INSN_SRO:        decode_r_insn("sro");
+        INSN_SLOI:       decode_i_shift_insn("sloi");
+        INSN_SROI:       decode_i_shift_insn("sroi");
 
         // RV32B - ZBT
         INSN_CMIX:       decode_r_cmixcmov_insn("cmix");

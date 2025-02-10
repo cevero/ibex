@@ -99,7 +99,15 @@ package riscv_instr_pkg;
     RV128C,
     RVV,
     RV32B,
+    RV32ZBA,
+    RV32ZBB,
+    RV32ZBC,
+    RV32ZBS,
     RV64B,
+    RV64ZBA,
+    RV64ZBB,
+    RV64ZBC,
+    RV64ZBS,
     RV32X,
     RV64X
   } riscv_instr_group_t;
@@ -154,108 +162,115 @@ package riscv_instr_pkg;
     CSRRWI,
     CSRRSI,
     CSRRCI,
-    // RV32B instructions
+    // RV32ZBA instructions
+    SH1ADD,
+    SH2ADD,
+    SH3ADD,
+    // RV32ZBB instructions
     ANDN,
+    CLZ,
+    CPOP,
+    CTZ,
+    MAX,
+    MAXU,
+    MIN,
+    MINU,
+    ORC_B,
     ORN,
-    XNOR,
-    GORC,
-    SLO,
-    SRO,
+    REV8,
     ROL,
     ROR,
-    SBCLR,
-    SBSET,
-    SBINV,
-    SBEXT,
-    GREV,
-    SLOI,
-    SROI,
     RORI,
-    SBCLRI,
-    SBSETI,
-    SBINVI,
-    SBEXTI,
+    SEXT_B,
+    SEXT_H,
+    XNOR,
+    ZEXT_H,
+    // RV32ZBC instructions
+    CLMUL,
+    CLMULH,
+    CLMULR,
+    // RV32ZBS instructions
+    BCLR,
+    BCLRI,
+    BEXT,
+    BEXTI,
+    BINV,
+    BINVI,
+    BSET,
+    BSETI,
+    // RV32B instructions
+    // Remaining bitmanip instructions of draft v.0.93 not ratified in v.1.00 (Zba, Zbb, Zbc, Zbs).
+    GORC,
     GORCI,
-    GREVI,
     CMIX,
     CMOV,
+    PACK,
+    PACKU,
+    PACKH,
+    XPERM_N,
+    XPERM_B,
+    XPERM_H,
+    SLO,
+    SRO,
+    SLOI,
+    SROI,
+    GREV,
+    GREVI,
     FSL,
     FSR,
     FSRI,
-    CLZ,
-    CTZ,
-    PCNT,
-    SEXT_B,
-    SEXT_H,
     CRC32_B,
     CRC32_H,
     CRC32_W,
     CRC32C_B,
     CRC32C_H,
     CRC32C_W,
-    CLMUL,
-    CLMULR,
-    CLMULH,
-    MIN,
-    MAX,
-    MINU,
-    MAXU,
     SHFL,
     UNSHFL,
-    BDEP,
-    BEXT,
-    PACK,
-    PACKU,
-    BMATOR,
-    BMATXOR,
-    PACKH,
-    BFP,
     SHFLI,
     UNSHFLI,
+    BCOMPRESS,
+    BDECOMPRESS,
+    BFP,
+    // RV64ZBA instructions
+    ADD_UW,
+    SH1ADD_UW,
+    SH2ADD_UW,
+    SH3ADD_UW,
+    SLLI_UW,
+    // RV64ZBB instructions
+    CLZW,
+    CPOPW,
+    CTZW,
+    ROLW,
+    RORW,
+    RORIW,
     //RV64B instructions
-    ADDIWU,
-    SLLIU_W,
-    ADDWU,
-    SUBWU,
+    // Remaining bitmanip instructions of draft v.0.93 not ratified in v.1.00 (Zba, Zbb, Zbc, Zbs).
+    BMATOR,
+    BMATXOR,
     BMATFLIP,
     CRC32_D,
     CRC32C_D,
-    ADDU_W,
-    SUBU_W,
+    SHFLW,
+    UNSHFLW,
+    BCOMPRESSW,
+    BDECOMPRESSW,
+    BFPW,
     SLOW,
     SROW,
-    ROLW,
-    RORW,
-    SBCLRW,
-    SBSETW,
-    SBINVW,
-    SBEXTW,
-    GORCW,
-    GREVW,
     SLOIW,
     SROIW,
-    RORIW,
-    SBCLRIW,
-    SBSETIW,
-    SBINVIW,
-    GORCIW,
+    GREVW,
     GREVIW,
     FSLW,
     FSRW,
     FSRIW,
-    CLZW,
-    CTZW,
-    PCNTW,
-    CLMULW,
-    CLMULRW,
-    CLMULHW,
-    SHFLW,
-    UNSHFLW,
-    BDEPW,
-    BEXTW,
+    GORCW,
+    GORCIW,
     PACKW,
     PACKUW,
-    BFPW,
+    XPERM_W,
     // RV32M instructions
     MUL,
     MULH,
@@ -741,9 +756,11 @@ package riscv_instr_pkg;
     UCAUSE          = 'h042,  // User trap cause
     UTVAL           = 'h043,  // User bad address or instruction
     UIP             = 'h044,  // User interrupt pending
+    // Unprivileged Floating-Point CSRs
     FFLAGS          = 'h001,  // Floating-Point Accrued Exceptions
     FRM             = 'h002,  // Floating-Point Dynamic Rounding Mode
     FCSR            = 'h003,  // Floating-Point Control/Status Register (FRM + FFLAGS)
+    // Unprivileged Counter/Timers
     CYCLE           = 'hC00,  // Cycle counter for RDCYCLE instruction
     TIME            = 'hC01,  // Timer for RDTIME instruction
     INSTRET         = 'hC02,  // Instructions-retired counter for RDINSTRET instruction
@@ -809,23 +826,66 @@ package riscv_instr_pkg;
     HPMCOUNTER30H   = 'hC9E,  // Upper 32 bits of HPMCOUNTER30, RV32I only
     HPMCOUNTER31H   = 'hC9F,  // Upper 32 bits of HPMCOUNTER31, RV32I only
     // Supervisor mode register
+    // Supervisor Trap Setup
     SSTATUS         = 'h100,  // Supervisor status
     SEDELEG         = 'h102,  // Supervisor exception delegation register
     SIDELEG         = 'h103,  // Supervisor interrupt delegation register
     SIE             = 'h104,  // Supervisor interrupt-enable register
     STVEC           = 'h105,  // Supervisor trap-handler base address
     SCOUNTEREN      = 'h106,  // Supervisor counter enable
+    // Supervisor Configuration
+    SENVCFG         = 'h10A,  // Supervisor environment configuration register
+    // Supervisor Trap Handling
     SSCRATCH        = 'h140,  // Scratch register for supervisor trap handlers
     SEPC            = 'h141,  // Supervisor exception program counter
     SCAUSE          = 'h142,  // Supervisor trap cause
     STVAL           = 'h143,  // Supervisor bad address or instruction
     SIP             = 'h144,  // Supervisor interrupt pending
+    // Supervisor Protection and Translation
     SATP            = 'h180,  // Supervisor address translation and protection
-    // Machine mode register
+    // Supervisor Debug/Trace Register
+    SCONTEXT        = 'h5A8,  // Supervisor environment configuration register.
+    // Hypervisor Trap Setup register
+    HSTATUS         = 'h600,  // Hypervisor status register
+    HEDELEG         = 'h602,  // Hypervisor exception delegation register
+    HIDELEG         = 'h603,  // Hypervisor interrupt delegation register
+    HIE             = 'h604,  // Hypervisor interrupt-enable register
+    HCOUNTEREN      = 'h606,  // Hypervisor counter enable
+    HGEIE           = 'h607,  // Hypervisor guest external interrupt-enable register
+    // Hypervisor Trap Handling
+    HTVAL           = 'h643,  // Hypervisor bad guest physical address
+    HIP             = 'h644,  // Hypervisor interrupt pending
+    HVIP            = 'h645,  // Hypervisor virtual interrupt pending
+    HTINST          = 'h64A,  // Hypervisor trap instruction (transformed)
+    HGEIP           = 'hE12,  // Hypervisor guest external interrupt pending
+    // Hypervisor configuration
+    HENVCFG         = 'h60A,  // Hypervisor environment configuration register
+    HENVCFGH        = 'h61A,  // Additional hypervisor env. conf. register, RV32 only
+    // Hypervisor guest address translation and protection
+    HGATP           = 'h680,  // Hypervisor guest address translation and protection
+    // Hypervisor Debug/Trace registers
+    HCONTEXT        = 'h6A8,  // Hypervisor-mode context register
+    // Hypervisor Counter/Timer Virtualization Registers
+    HTIMEDELTA      = 'h605,  // Delta for VS/VU-mode timer
+    HTIMEDELTAH     = 'h615,  // Upper 32 bits of htimedelta, HSXLEN=32 only
+    // Virtual Supervisor Registers
+    VSSTATUS        = 'h200,  // Virtual supervisor status register
+    VSIE            = 'h204,  // Virtual supervisor interrupt-enable register
+    VSTVEC          = 'h205,  // Virtual supervisor trap handler base address
+    VSSCRATCH       = 'h240,  // Virtual supervisor scratch register
+    VSEPC           = 'h241,  // Virtual supervisor exception program counter
+    VSCAUSE         = 'h242,  // Virtual supervisor trap cause
+    VSTVAL          = 'h243,  // Virtual supervisor bad address or instruction
+    VSIP            = 'h244,  // Virtual supervisor interrupt pending
+    VSATP           = 'h280,  // Virtual supervisor address translation and protection
+    // Machine mode registers
+    // Machine Information Registers
     MVENDORID       = 'hF11,  // Vendor ID
     MARCHID         = 'hF12,  // Architecture ID
     MIMPID          = 'hF13,  // Implementation ID
     MHARTID         = 'hF14,  // Hardware thread ID
+    MCONFIGPTR      = 'hF15,  // Pointer to configuration data structure
+    // Machine Trap Setup
     MSTATUS         = 'h300,  // Machine status
     MISA            = 'h301,  // ISA and extensions
     MEDELEG         = 'h302,  // Machine exception delegation register
@@ -833,15 +893,35 @@ package riscv_instr_pkg;
     MIE             = 'h304,  // Machine interrupt-enable register
     MTVEC           = 'h305,  // Machine trap-handler base address
     MCOUNTEREN      = 'h306,  // Machine counter enable
+    MSTATUSH        = 'h310,  // Additional machine status register, RV32 only
+    // Machine Trap Handling
     MSCRATCH        = 'h340,  // Scratch register for machine trap handlers
     MEPC            = 'h341,  // Machine exception program counter
     MCAUSE          = 'h342,  // Machine trap cause
     MTVAL           = 'h343,  // Machine bad address or instruction
     MIP             = 'h344,  // Machine interrupt pending
+    // Machine Configuration
+    MENVCFG         = 'h30A,  // Machine environment configuration register
+    MENVCFGH        = 'h31A,  // Additional machine env. conf. register, RV32 only
+    MSECCFG         = 'h747,  // Machine security configuration register
+    MSECCFGH        = 'h757,  // Additional machine security conf. register, RV32 only
+    // Machine Memory Protection
     PMPCFG0         = 'h3A0,  // Physical memory protection configuration
     PMPCFG1         = 'h3A1,  // Physical memory protection configuration, RV32 only
     PMPCFG2         = 'h3A2,  // Physical memory protection configuration
     PMPCFG3         = 'h3A3,  // Physical memory protection configuration, RV32 only
+    PMPCFG4         = 'h3A4,  // Physical memory protection configuration
+    PMPCFG5         = 'h3A5,  // Physical memory protection configuration, RV32 only
+    PMPCFG6         = 'h3A6,  // Physical memory protection configuration
+    PMPCFG7         = 'h3A7,  // Physical memory protection configuration, RV32 only
+    PMPCFG8         = 'h3A8,  // Physical memory protection configuration
+    PMPCFG9         = 'h3A9,  // Physical memory protection configuration, RV32 only
+    PMPCFG10        = 'h3AA,  // Physical memory protection configuration
+    PMPCFG11        = 'h3AB,  // Physical memory protection configuration, RV32 only
+    PMPCFG12        = 'h3AC,  // Physical memory protection configuration
+    PMPCFG13        = 'h3AD,  // Physical memory protection configuration, RV32 only
+    PMPCFG14        = 'h3AE,  // Physical memory protection configuration
+    PMPCFG15        = 'h3AF,  // Physical memory protection configuration, RV32 only
     PMPADDR0        = 'h3B0,  // Physical memory protection address register
     PMPADDR1        = 'h3B1,  // Physical memory protection address register
     PMPADDR2        = 'h3B2,  // Physical memory protection address register
@@ -858,6 +938,54 @@ package riscv_instr_pkg;
     PMPADDR13       = 'h3BD,  // Physical memory protection address register
     PMPADDR14       = 'h3BE,  // Physical memory protection address register
     PMPADDR15       = 'h3BF,  // Physical memory protection address register
+    PMPADDR16       = 'h4C0,  // Physical memory protection address register
+    PMPADDR17       = 'h3C1,  // Physical memory protection address register
+    PMPADDR18       = 'h3C2,  // Physical memory protection address register
+    PMPADDR19       = 'h3C3,  // Physical memory protection address register
+    PMPADDR20       = 'h3C4,  // Physical memory protection address register
+    PMPADDR21       = 'h3C5,  // Physical memory protection address register
+    PMPADDR22       = 'h3C6,  // Physical memory protection address register
+    PMPADDR23       = 'h3C7,  // Physical memory protection address register
+    PMPADDR24       = 'h3C8,  // Physical memory protection address register
+    PMPADDR25       = 'h3C9,  // Physical memory protection address register
+    PMPADDR26       = 'h3CA,  // Physical memory protection address register
+    PMPADDR27       = 'h3CB,  // Physical memory protection address register
+    PMPADDR28       = 'h3CC,  // Physical memory protection address register
+    PMPADDR29       = 'h3CD,  // Physical memory protection address register
+    PMPADDR30       = 'h3CE,  // Physical memory protection address register
+    PMPADDR31       = 'h3CF,  // Physical memory protection address register
+    PMPADDR32       = 'h4D0,  // Physical memory protection address register
+    PMPADDR33       = 'h3D1,  // Physical memory protection address register
+    PMPADDR34       = 'h3D2,  // Physical memory protection address register
+    PMPADDR35       = 'h3D3,  // Physical memory protection address register
+    PMPADDR36       = 'h3D4,  // Physical memory protection address register
+    PMPADDR37       = 'h3D5,  // Physical memory protection address register
+    PMPADDR38       = 'h3D6,  // Physical memory protection address register
+    PMPADDR39       = 'h3D7,  // Physical memory protection address register
+    PMPADDR40       = 'h3D8,  // Physical memory protection address register
+    PMPADDR41       = 'h3D9,  // Physical memory protection address register
+    PMPADDR42       = 'h3DA,  // Physical memory protection address register
+    PMPADDR43       = 'h3DB,  // Physical memory protection address register
+    PMPADDR44       = 'h3DC,  // Physical memory protection address register
+    PMPADDR45       = 'h3DD,  // Physical memory protection address register
+    PMPADDR46       = 'h3DE,  // Physical memory protection address register
+    PMPADDR47       = 'h3DF,  // Physical memory protection address register
+    PMPADDR48       = 'h4E0,  // Physical memory protection address register
+    PMPADDR49       = 'h3E1,  // Physical memory protection address register
+    PMPADDR50       = 'h3E2,  // Physical memory protection address register
+    PMPADDR51       = 'h3E3,  // Physical memory protection address register
+    PMPADDR52       = 'h3E4,  // Physical memory protection address register
+    PMPADDR53       = 'h3E5,  // Physical memory protection address register
+    PMPADDR54       = 'h3E6,  // Physical memory protection address register
+    PMPADDR55       = 'h3E7,  // Physical memory protection address register
+    PMPADDR56       = 'h3E8,  // Physical memory protection address register
+    PMPADDR57       = 'h3E9,  // Physical memory protection address register
+    PMPADDR58       = 'h3EA,  // Physical memory protection address register
+    PMPADDR59       = 'h3EB,  // Physical memory protection address register
+    PMPADDR60       = 'h3EC,  // Physical memory protection address register
+    PMPADDR61       = 'h3ED,  // Physical memory protection address register
+    PMPADDR62       = 'h3EE,  // Physical memory protection address register
+    PMPADDR63       = 'h3EF,  // Physical memory protection address register
     MCYCLE          = 'hB00,  // Machine cycle counter
     MINSTRET        = 'hB02,  // Machine instructions-retired counter
     MHPMCOUNTER3    = 'hB03,  // Machine performance-monitoring counter
@@ -950,6 +1078,7 @@ package riscv_instr_pkg;
     MHPMEVENT29     = 'h33D,  // Machine performance-monitoring event selector
     MHPMEVENT30     = 'h33E,  // Machine performance-monitoring event selector
     MHPMEVENT31     = 'h33F,  // Machine performance-monitoring event selector
+    // Debug/Trace Registers (shared with Debug Mode)
     TSELECT         = 'h7A0,  // Debug/Trace trigger register select
     TDATA1          = 'h7A1,  // First Debug/Trace trigger data register
     TDATA2          = 'h7A2,  // Second Debug/Trace trigger data register
@@ -957,7 +1086,8 @@ package riscv_instr_pkg;
     TINFO           = 'h7A4,  // Debug trigger info register
     TCONTROL        = 'h7A5,  // Debug trigger control register
     MCONTEXT        = 'h7A8,  // Machine mode trigger context register
-    SCONTEXT        = 'h7AA,  // Supervisor mode trigger context register
+    MSCONTEXT       = 'h7AA,  // Supervisor mode trigger context register
+    // Debug Mode Registers
     DCSR            = 'h7B0,  // Debug control and status register
     DPC             = 'h7B1,  // Debug PC
     DSCRATCH0       = 'h7B2,  // Debug scratch register
@@ -1078,7 +1208,16 @@ package riscv_instr_pkg;
     WAW_HAZARD
   } hazard_e;
 
+  riscv_csr_t default_include_csr_write[$] = {MSCRATCH};
+
   `include "riscv_core_setting.sv"
+
+  // ePMP machine security configuration
+  typedef struct packed {
+    bit rlb;
+    bit mmwp;
+    bit mml;
+  } mseccfg_reg_t;
 
   // PMP address matching mode
   typedef enum bit [1:0] {
@@ -1105,6 +1244,8 @@ package riscv_instr_pkg;
     // The offset from the address of <main> - automatically populated by the
     // PMP generation routine.
     bit [XLEN - 1 : 0]    offset;
+    // The size of the region in case of NAPOT and overlap in case of TOR.
+    integer addr_mode;
 `else
   typedef struct{
     rand bit                   l;
@@ -1115,10 +1256,12 @@ package riscv_instr_pkg;
     rand bit                   r;
     // RV32: the pmpaddr is the top 32 bits of a 34 bit PMP address
     // RV64: the pmpaddr is the top 54 bits of a 56 bit PMP address
-    bit [XLEN - 1 : 0]    addr;
+    rand bit [XLEN - 1 : 0]    addr;
     // The offset from the address of <main> - automatically populated by the
     // PMP generation routine.
     rand bit [XLEN - 1 : 0]    offset;
+    // The size of the region in case of NAPOT and allows for top less than bottom in TOR when 0.
+    rand integer addr_mode;
 `endif
   } pmp_cfg_reg_t;
 
@@ -1151,6 +1294,7 @@ package riscv_instr_pkg;
   } vxrm_t;
 
   typedef enum int {
+    ZBA,
     ZBB,
     ZBS,
     ZBP,
@@ -1178,7 +1322,7 @@ package riscv_instr_pkg;
   parameter int DATA_WIDTH  = 32;
 
   // Parameters for output assembly program formatting
-  parameter int MAX_INSTR_STR_LEN = 11;
+  parameter int MAX_INSTR_STR_LEN = 13;
   parameter int LABEL_STR_LEN     = 18;
 
   // Parameter for program generation
@@ -1235,18 +1379,18 @@ package riscv_instr_pkg;
                                                    ref string instr[$]);
     string store_instr = (XLEN == 32) ? "sw" : "sd";
     if (scratch inside {implemented_csr}) begin
-      // Use kernal stack for handling exceptions
-      // Save the user mode stack pointer to the scratch register
-      instr.push_back($sformatf("csrrw x%0d, 0x%0x, x%0d", sp, scratch, sp));
-      // Move TP to SP
+      // Push USP from gpr.SP onto the kernel stack
+      instr.push_back($sformatf("addi x%0d, x%0d, -4", tp, tp));
+      instr.push_back($sformatf("%0s  x%0d, (x%0d)", store_instr, sp, tp));
+      // Move KSP to gpr.SP
       instr.push_back($sformatf("add x%0d, x%0d, zero", sp, tp));
     end
     // If MPRV is set and MPP is S/U mode, it means the address translation and memory protection
     // for load/store instruction is the same as the mode indicated by MPP. In this case, we
     // need to use the virtual address to access the kernel stack.
     if((status == MSTATUS) && (SATP_MODE != BARE)) begin
-      // We temporarily use tp to check mstatus to avoid changing other GPR. The value of sp has
-      // been saved to xScratch and can be restored later.
+      // We temporarily use tp to check mstatus to avoid changing other GPR.
+      // (The value of sp has been pushed to the kernel stack, so can be recovered later)
       if(mprv) begin
         instr.push_back($sformatf("csrr x%0d, 0x%0x // MSTATUS", tp, status));
         instr.push_back($sformatf("srli x%0d, x%0d, 11", tp, tp));  // Move MPP to bit 0
@@ -1257,14 +1401,18 @@ package riscv_instr_pkg;
         // Use virtual address for stack pointer
         instr.push_back($sformatf("slli x%0d, x%0d, %0d", sp, sp, XLEN - MAX_USED_VADDR_BITS));
         instr.push_back($sformatf("srli x%0d, x%0d, %0d", sp, sp, XLEN - MAX_USED_VADDR_BITS));
+        instr.push_back("1: nop");
       end
     end
-    // Reserve space from kernel stack to save all 32 GPR except for x0
-    instr.push_back($sformatf("1: addi x%0d, x%0d, -%0d", sp, sp, 31 * (XLEN/8)));
-    // Push all GPRs to kernel stack
+    // Push all GPRs (except for x0) to kernel stack
+    // (gpr.SP currently holds the KSP)
+    instr.push_back($sformatf("addi x%0d, x%0d, -%0d", sp, sp, 32 * (XLEN/8)));
     for(int i = 1; i < 32; i++) begin
       instr.push_back($sformatf("%0s  x%0d, %0d(x%0d)", store_instr, i, i * (XLEN/8), sp));
     end
+    // Move KSP back to gpr.TP
+    // (this is needed if we again take a interrupt (nested) before restoring our USP)
+    instr.push_back($sformatf("add x%0d, x%0d, zero", tp, sp));
   endfunction
 
   // Pop general purpose register from stack, this is needed before returning to user program
@@ -1275,17 +1423,19 @@ package riscv_instr_pkg;
                                                     riscv_reg_t tp,
                                                     ref string instr[$]);
     string load_instr = (XLEN == 32) ? "lw" : "ld";
-    // Pop user mode GPRs from kernel stack
+    // Move KSP to gpr.SP
+    instr.push_back($sformatf("add x%0d, x%0d, zero", sp, tp));
+    // Pop GPRs from kernel stack
     for(int i = 1; i < 32; i++) begin
       instr.push_back($sformatf("%0s  x%0d, %0d(x%0d)", load_instr, i, i * (XLEN/8), sp));
     end
-    // Restore kernel stack pointer
-    instr.push_back($sformatf("addi x%0d, x%0d, %0d", sp, sp, 31 * (XLEN/8)));
+    instr.push_back($sformatf("addi x%0d, x%0d, %0d", sp, sp, 32 * (XLEN/8)));
     if (scratch inside {implemented_csr}) begin
-      // Move SP to TP
+      // Move KSP back to gpr.TP
       instr.push_back($sformatf("add x%0d, x%0d, zero", tp, sp));
-      // Restore user mode stack pointer
-      instr.push_back($sformatf("csrrw x%0d, 0x%0x, x%0d", sp, scratch, sp));
+      // Pop USP from the kernel stack, move back to gpr.SP
+      instr.push_back($sformatf("%0s  x%0d, (x%0d)", load_instr, sp, tp));
+      instr.push_back($sformatf("addi x%0d, x%0d, 4", tp, tp));
     end
   endfunction
 
@@ -1315,7 +1465,7 @@ package riscv_instr_pkg;
   endfunction
 
   class cmdline_enum_processor #(parameter type T = riscv_instr_group_t);
-    static function void get_array_values(string cmdline_str, ref T vals[]);
+    static function void get_array_values(string cmdline_str, bit allow_raw_vals, ref T vals[]);
       string s;
       void'(inst.get_arg_value(cmdline_str, s));
       if(s != "") begin
@@ -1324,7 +1474,13 @@ package riscv_instr_pkg;
         uvm_split_string(s, ",", cmdline_list);
         vals = new[cmdline_list.size];
         foreach (cmdline_list[i]) begin
-          if (uvm_enum_wrapper#(T)::from_name(
+          if (allow_raw_vals && cmdline_list[i].substr(0, 1) == "0x") begin
+            logic[$bits(T)-1:0] raw_val;
+
+            string raw_val_hex_digits = cmdline_list[i].substr(2, cmdline_list[i].len()-1);
+            raw_val = raw_val_hex_digits.atohex();
+            vals[i] = T'(raw_val);
+          end else if (uvm_enum_wrapper#(T)::from_name(
              cmdline_list[i].toupper(), value)) begin
             vals[i] = value;
           end else begin
@@ -1372,11 +1528,20 @@ package riscv_instr_pkg;
   `include "riscv_vector_cfg.sv"
   `include "riscv_pmp_cfg.sv"
   typedef class riscv_instr;
+  typedef class riscv_zba_instr;
+  typedef class riscv_zbb_instr;
+  typedef class riscv_zbc_instr;
+  typedef class riscv_zbs_instr;
   typedef class riscv_b_instr;
   `include "riscv_instr_gen_config.sv"
   `include "isa/riscv_instr.sv"
   `include "isa/riscv_amo_instr.sv"
+  `include "isa/riscv_zba_instr.sv"
+  `include "isa/riscv_zbb_instr.sv"
+  `include "isa/riscv_zbc_instr.sv"
+  `include "isa/riscv_zbs_instr.sv"
   `include "isa/riscv_b_instr.sv"
+  `include "isa/riscv_csr_instr.sv"
   `include "isa/riscv_floating_point_instr.sv"
   `include "isa/riscv_vector_instr.sv"
   `include "isa/riscv_compressed_instr.sv"
@@ -1388,9 +1553,15 @@ package riscv_instr_pkg;
   `include "isa/rv32f_instr.sv"
   `include "isa/rv32i_instr.sv"
   `include "isa/rv32b_instr.sv"
+  `include "isa/rv32zba_instr.sv"
+  `include "isa/rv32zbb_instr.sv"
+  `include "isa/rv32zbc_instr.sv"
+  `include "isa/rv32zbs_instr.sv"
   `include "isa/rv32m_instr.sv"
   `include "isa/rv64a_instr.sv"
   `include "isa/rv64b_instr.sv"
+  `include "isa/rv64zba_instr.sv"
+  `include "isa/rv64zbb_instr.sv"
   `include "isa/rv64c_instr.sv"
   `include "isa/rv64d_instr.sv"
   `include "isa/rv64f_instr.sv"

@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -27,9 +27,6 @@ class ${name}_env_cfg extends dv_base_env_cfg;
 % if has_alerts:
     list_of_alerts = ${name}_env_pkg::LIST_OF_ALERTS;
 % endif
-% if has_edn:
-    cfg.has_edn = 1;
-% endif
 % if has_ral:
     super.initialize(csr_base_addr);
 % endif
@@ -37,9 +34,9 @@ class ${name}_env_cfg extends dv_base_env_cfg;
     // create ${agent} agent config obj
     m_${agent}_agent_cfg = ${agent}_agent_cfg::type_id::create("m_${agent}_agent_cfg");
 % endfor
-% if is_cip:
+% if has_interrupts:
 
-    // set num_interrupts & num_alerts
+    // set num_interrupts
     begin
       uvm_reg rg = ral.get_reg_by_name("intr_state");
       if (rg != null) begin

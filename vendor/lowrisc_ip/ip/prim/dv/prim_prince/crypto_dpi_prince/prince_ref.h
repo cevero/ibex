@@ -1,7 +1,10 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Copyright 2016 Sebastien Riou
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
+
+#ifndef OPENTITAN_HW_IP_PRIM_DV_PRIM_PRINCE_CRYPTO_DPI_PRINCE_PRINCE_REF_H_
+#define OPENTITAN_HW_IP_PRIM_DV_PRIM_PRINCE_CRYPTO_DPI_PRINCE_PRINCE_REF_H_
 
 /*! \file prince_ref.h
     \brief Reference implementation of the Prince block cipher, complient to
@@ -31,9 +34,6 @@
  *    - Modification of `prince_core(...)` to handle the new key schedule and
  *      user-specified number of half-rounds.
  */
-
-#ifndef OPENTITAN_HW_IP_PRIM_DV_PRIM_PRINCE_CRYPTO_DPI_PRINCE_PRINCE_REF_H_
-#define OPENTITAN_HW_IP_PRIM_DV_PRIM_PRINCE_CRYPTO_DPI_PRINCE_PRINCE_REF_H_
 
 #include <stdint.h>
 #include <string.h>
@@ -78,12 +78,10 @@ static uint64_t prince_k0_to_k0_prime(const uint64_t k0) {
 }
 
 static uint64_t prince_round_constant(const unsigned int round) {
-  uint64_t rc[] = {UINT64_C(0x0000000000000000), UINT64_C(0x13198a2e03707344),
-                   UINT64_C(0xa4093822299f31d0), UINT64_C(0x082efa98ec4e6c89),
-                   UINT64_C(0x452821e638d01377), UINT64_C(0xbe5466cf34e90c6c),
-                   UINT64_C(0x7ef84f78fd955cb1), UINT64_C(0x85840851f1ac43aa),
-                   UINT64_C(0xc882d32f25323c54), UINT64_C(0x64a51195e0e3610d),
-                   UINT64_C(0xd3b5a399ca0c2399), UINT64_C(0xc0ac29b7c97c50dd)};
+  uint64_t rc[] = {0x0000000000000000, 0x13198a2e03707344, 0xa4093822299f31d0,
+                   0x082efa98ec4e6c89, 0x452821e638d01377, 0xbe5466cf34e90c6c,
+                   0x7ef84f78fd955cb1, 0x85840851f1ac43aa, 0xc882d32f25323c54,
+                   0x64a51195e0e3610d, 0xd3b5a399ca0c2399, 0xc0ac29b7c97c50dd};
   return rc[round];
 }
 
@@ -149,7 +147,7 @@ static uint64_t gf2_mat_mult16_1(const uint64_t in, const uint64_t mat[16]) {
 /**
  * Build Prince's 16 bit matrices M0 and M1.
  */
-static void prince_m16_matrices(uint64_t m16[2][16]) {
+static inline void prince_m16_matrices(uint64_t m16[2][16]) {
   // 4 bits matrices m0 to m3 are stored in array m4
   const uint64_t m4[4][4] = {// m0
                              {0x0, 0x2, 0x4, 0x8},
@@ -198,7 +196,7 @@ static uint64_t prince_m_prime_layer(const uint64_t m_prime_in) {
  * The shift row and inverse shift row of the Prince cipher.
  */
 static uint64_t prince_shift_rows(const uint64_t in, int inverse) {
-  const uint64_t row_mask = UINT64_C(0xF000F000F000F000);
+  const uint64_t row_mask = 0xF000F000F000F000;
   uint64_t shift_rows_out = 0;
   for (unsigned int i = 0; i < 4; i++) {
     const uint64_t row = in & (row_mask >> (4 * i));
@@ -234,7 +232,7 @@ static uint64_t prince_core(const uint64_t core_input, const uint64_t k0_new,
   PRINCE_PRINT(core_input);
   PRINCE_PRINT(k1);
   uint64_t round_input = core_input ^ k1 ^ prince_round_constant(0);
-  for (unsigned int round = 1; round <= num_half_rounds; round++) {
+  for (int round = 1; round <= num_half_rounds; round++) {
     PRINCE_PRINT(round_input);
     const uint64_t s_out = prince_s_layer(round_input);
     PRINCE_PRINT(s_out);
@@ -250,8 +248,7 @@ static uint64_t prince_core(const uint64_t core_input, const uint64_t k0_new,
   PRINCE_PRINT(m_prime_out);
   const uint64_t middle_round_s_inv_out = prince_s_inv_layer(m_prime_out);
   round_input = middle_round_s_inv_out;
-  // for(unsigned int round = 6; round < num_half_rounds * 2 + 1; round ++){
-  for (unsigned int round = 1; round <= num_half_rounds; round++) {
+  for (int round = 1; round <= num_half_rounds; round++) {
     PRINCE_PRINT(round_input);
     const uint64_t constant_idx = 10 - num_half_rounds + round;
     const uint64_t m_inv_in =
@@ -278,7 +275,7 @@ static uint64_t prince_core(const uint64_t core_input, const uint64_t k0_new,
 uint64_t prince_enc_dec_uint64(const uint64_t input, const uint64_t enc_k0,
                                const uint64_t enc_k1, int decrypt,
                                int num_half_rounds, int old_key_schedule) {
-  const uint64_t prince_alpha = UINT64_C(0xc0ac29b7c97c50dd);
+  const uint64_t prince_alpha = 0xc0ac29b7c97c50dd;
   const uint64_t k1 = enc_k1 ^ (decrypt ? prince_alpha : 0);
   const uint64_t k0_new =
       (old_key_schedule) ? k1 : enc_k0 ^ (decrypt ? prince_alpha : 0);
@@ -320,9 +317,10 @@ static void prince_enc_dec(const uint8_t in_bytes[8],
  * key_bytes 0 to 7 must contain K0.
  * key_bytes 8 to 15 must contain K1.
  */
-static void prince_encrypt(const uint8_t in_bytes[8],
-                           const uint8_t key_bytes[16], uint8_t out_bytes[8],
-                           int num_half_rounds, int old_key_schedule) {
+static inline void prince_encrypt(const uint8_t in_bytes[8],
+                                  const uint8_t key_bytes[16],
+                                  uint8_t out_bytes[8], int num_half_rounds,
+                                  int old_key_schedule) {
   prince_enc_dec(in_bytes, key_bytes, out_bytes, 0, num_half_rounds,
                  old_key_schedule);
 }
@@ -333,12 +331,12 @@ static void prince_encrypt(const uint8_t in_bytes[8],
  * key_bytes 0 to 7 must contain K0.
  * key_bytes 8 to 15 must contain K1.
  */
-static void prince_decrypt(const uint8_t in_bytes[8],
-                           const uint8_t key_bytes[16], uint8_t out_bytes[8],
-                           int num_half_rounds, int old_key_schedule) {
+static inline void prince_decrypt(const uint8_t in_bytes[8],
+                                  const uint8_t key_bytes[16],
+                                  uint8_t out_bytes[8], int num_half_rounds,
+                                  int old_key_schedule) {
   prince_enc_dec(in_bytes, key_bytes, out_bytes, 1, num_half_rounds,
                  old_key_schedule);
-  uint64_t m16[2][16];
 }
 
 #endif  // OPENTITAN_HW_IP_PRIM_DV_PRIM_PRINCE_CRYPTO_DPI_PRINCE_PRINCE_REF_H_

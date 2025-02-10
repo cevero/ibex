@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -15,11 +15,10 @@
 
 `include "prim_assert.sv"
 
-module prim_ram_2p_adv #(
+module prim_ram_2p_adv import prim_ram_2p_pkg::*; #(
   parameter  int Depth                = 512,
   parameter  int Width                = 32,
   parameter  int DataBitsPerMask      = 1,  // Number of data bits per bit of write mask
-  parameter  int CfgW                 = 8,  // WTC, RTC, etc
   parameter      MemInitFile          = "", // VMEM file to initialize the memory with
 
   // Configurations
@@ -27,6 +26,11 @@ module prim_ram_2p_adv #(
   parameter  bit EnableParity         = 0, // Enables per-Byte Parity
   parameter  bit EnableInputPipeline  = 0, // Adds an input register (read latency +1)
   parameter  bit EnableOutputPipeline = 0, // Adds an output register (read latency +1)
+
+  // This switch allows to switch to standard Hamming ECC instead of the HSIAO ECC.
+  // It is recommended to leave this parameter at its default setting (HSIAO),
+  // since this results in a more compact and faster implementation.
+  parameter bit HammingECC            = 0,
 
   localparam int Aw                   = prim_util_pkg::vbits(Depth)
 ) (
@@ -51,19 +55,19 @@ module prim_ram_2p_adv #(
   output logic             b_rvalid_o, // read response (b_rdata_o) is valid
   output logic [1:0]       b_rerror_o, // Bit1: Uncorrectable, Bit0: Correctable
 
-  input        [CfgW-1:0]  cfg_i
+  input ram_2p_cfg_t       cfg_i
 );
 
   prim_ram_2p_async_adv #(
     .Depth               (Depth),
     .Width               (Width),
     .DataBitsPerMask     (DataBitsPerMask),
-    .CfgW                (CfgW),
     .MemInitFile         (MemInitFile),
     .EnableECC           (EnableECC),
     .EnableParity        (EnableParity),
     .EnableInputPipeline (EnableInputPipeline),
-    .EnableOutputPipeline(EnableOutputPipeline)
+    .EnableOutputPipeline(EnableOutputPipeline),
+    .HammingECC          (HammingECC)
   ) i_prim_ram_2p_async_adv (
     .clk_a_i(clk_i),
     .rst_a_ni(rst_ni),

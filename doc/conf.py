@@ -12,11 +12,18 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+import sys
 
 # Source top directory
 topsrcdir = os.path.join(os.path.dirname(__file__), '..')
+
+old_sys_path = sys.path
+try:
+    sys.path.append(os.path.join(topsrcdir, 'util'))
+    import check_tool_requirements as ctr
+finally:
+    sys.path = old_sys_path
+
 
 numfig=True
 numfig_format = {'figure': 'Figure %s', 'table': 'Table %s', 'code-block': 'Listing %s'}
@@ -35,7 +42,9 @@ extensions = [
     'sphinx.ext.todo',
 ]
 
+# Wavedrom
 wavedrom_html_jsinline = False
+render_using_wavedrompy = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -106,7 +115,7 @@ html_logo = 'images/logo.svg'
 html_static_path = ['_static']
 
 html_css_files = [
-    '_static/theme_overrides.css', # Fix wide tables in RTD theme
+    'theme_overrides.css', # Fix wide tables in RTD theme
 ]
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -164,7 +173,8 @@ texinfo_documents = [
 
 # Add minimum versions of required tools as variables for use inside the
 # documentation.
-exec(open(os.path.join(topsrcdir, 'tool_requirements.py')).read())
+tool_reqs = ctr.read_tool_requirements()
 rst_epilog = ""
-for tool_name, tool_version in __TOOL_REQUIREMENTS__.items():
-    rst_epilog += ".. |tool_requirements.{}| replace:: {}\n".format(tool_name, tool_version)
+for tool, req in tool_reqs.items():
+    rst_epilog += (".. |tool_requirements.{}| replace:: {}\n"
+                   .format(tool, req.min_version))

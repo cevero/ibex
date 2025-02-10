@@ -1,13 +1,16 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
 import logging as log
 import sys
+import os
 
 from CfgJson import load_hjson
 
-import FpvCfg
+import FormalCfg
+import CdcCfg
+import RdcCfg
 import LintCfg
 import SimCfg
 import SynCfg
@@ -22,6 +25,11 @@ def _load_cfg(path, initial_values):
     failure.
 
     '''
+    # Set the `self_dir` template variable to the path of the currently
+    # processed Hjson file.
+    assert 'self_dir' in initial_values
+    initial_values['self_dir'] = os.path.dirname(path)
+
     # Start by loading up the hjson file and any included files
     hjson_data = load_hjson(path, initial_values)
 
@@ -34,9 +42,11 @@ def _load_cfg(path, initial_values):
                            .format(path))
 
     classes = [
+        RdcCfg.RdcCfg,
+        CdcCfg.CdcCfg,
         LintCfg.LintCfg,
         SynCfg.SynCfg,
-        FpvCfg.FpvCfg,
+        FormalCfg.FormalCfg,
         SimCfg.SimCfg
     ]
     found_cls = None
@@ -82,7 +92,10 @@ def make_cfg(path, args, proj_root):
     of the project.
 
     '''
-    initial_values = {'proj_root': proj_root}
+    initial_values = {
+        'proj_root': proj_root,
+        'self_dir': os.path.dirname(path),
+    }
     if args.tool is not None:
         initial_values['tool'] = args.tool
 

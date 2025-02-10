@@ -5,26 +5,12 @@ CAPI=2:
 name: "lowrisc:ibex:ibex_simple_system"
 description: "Generic simple system for running binaries on ibex using verilator"
 filesets:
-  files_sim:
+  files_simple_system:
     depend:
-      - lowrisc:ibex:ibex_core_tracing
-      - lowrisc:ibex:sim_shared
+      - lowrisc:ibex:ibex_simple_system_core
     files:
-      - rtl/ibex_simple_system.sv
-    file_type: systemVerilogSource
-
-  files_verilator:
-    depend:
-      - lowrisc:dv_verilator:memutil_verilator
-      - lowrisc:dv_verilator:simutil_verilator
-      - lowrisc:dv_verilator:ibex_pcounts
-    files:
-      - ibex_simple_system.cc: { file_type: cppSource }
-      - lint/verilator_waiver.vlt: {file_type: vlt}
-
-  files_lint_verible:
-    files:
-      - lint/verible_waiver.vbw: {file_type: veribleLintWaiver}
+      - tool_verilator ? (ibex_simple_system_main.cc)
+    file_type: cppSource
 
 parameters:
   RV32E:
@@ -86,11 +72,23 @@ parameters:
     paramtype: vlogparam
     description: "Enables security hardening features (EXPERIMENTAL) [0/1]"
 
+  ICacheScramble:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: "Enables ICache scrambling feature (EXPERIMENTAL) [0/1]"
+
   BranchPredictor:
     datatype: int
     paramtype: vlogparam
     default: 0
     description: "Enables static branch prediction (EXPERIMENTAL)"
+
+  DbgTriggerEn:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: "Enable support for debug triggers. "
 
   PMPEnable:
     datatype: int
@@ -110,12 +108,22 @@ parameters:
     paramtype: vlogparam
     description: "Number of PMP regions"
 
+  MHPMCounterNum:
+    datatype: int
+    paramtype: vlogparam
+    default: 0
+    description: Number of performance monitor event counters [0/29]
+
+  MHPMCounterWidth:
+    datatype: int
+    paramtype: vlogparam
+    default: 40
+    description: Bit width of performance monitor event counters [32/64]
+
 targets:
   default: &default_target
     filesets:
-      - tool_verilator ? (files_verilator)
-      - tool_veriblelint ? (files_lint_verible)
-      - files_sim
+      - files_simple_system
     toplevel: ibex_simple_system
     parameters:
       - RV32E
@@ -123,14 +131,18 @@ targets:
       - RV32B
       - RegFile
       - ICache
+      - ICacheScramble
       - ICacheECC
       - BranchTargetALU
       - WritebackStage
       - SecureIbex
       - BranchPredictor
+      - DbgTriggerEn
       - PMPEnable
       - PMPGranularity
       - PMPNumRegions
+      - MHPMCounterNum
+      - MHPMCounterWidth
       - SRAMInitFile
 
   lint:
@@ -163,7 +175,7 @@ targets:
           - '--trace-structs'
           - '--trace-params'
           - '--trace-max-array 1024'
-          - '-CFLAGS "-std=c++11 -Wall -DVM_TRACE_FMT_FST -DTOPLEVEL_NAME=ibex_simple_system -g"'
+          - '-CFLAGS "-std=c++14 -Wall -DVM_TRACE_FMT_FST -DTOPLEVEL_NAME=ibex_simple_system -g"'
           - '-LDFLAGS "-pthread -lutil -lelf"'
           - "-Wall"
           - "-Wwarn-IMPERFECTSCH"

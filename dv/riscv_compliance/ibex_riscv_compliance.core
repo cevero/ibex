@@ -5,23 +5,22 @@ CAPI=2:
 name: "lowrisc:ibex:ibex_riscv_compliance:0.1"
 description: "Ibex simulation for RISC-V compliance testing (using Verilator)"
 filesets:
-  files_sim_verilator:
+  files_sim:
     depend:
-      - lowrisc:dv_verilator:memutil_verilator
-      - lowrisc:dv_verilator:simutil_verilator
-      - lowrisc:ibex:ibex_core_tracing
+      - lowrisc:ibex:ibex_top_tracing
       - lowrisc:ibex:sim_shared
-
     files:
       - rtl/ibex_riscv_compliance.sv
-      - ibex_riscv_compliance.cc: { file_type: cppSource }
       - rtl/riscv_testutil.sv
     file_type: systemVerilogSource
 
-  files_verilator_waiver:
+  files_verilator:
+    depend:
+      - lowrisc:dv_verilator:memutil_verilator
+      - lowrisc:dv_verilator:simutil_verilator
     files:
+      - ibex_riscv_compliance.cc: { file_type: cppSource }
       - lint/verilator_waiver.vlt: {file_type: vlt}
-
 
 parameters:
   RV32E:
@@ -78,6 +77,24 @@ parameters:
     default: 0
     description: "Enables static branch prediction (EXPERIMENTAL)"
 
+  DbgTriggerEn:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: "Enable support for debug triggers. "
+
+  SecureIbex:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: "Enables security hardening features (EXPERIMENTAL) [0/1]"
+
+  ICacheScramble:
+    datatype: int
+    default: 0
+    paramtype: vlogparam
+    description: "Enables ICache scrambling feature (EXPERIMENTAL) [0/1]"
+
   PMPEnable:
     datatype: int
     default: 0
@@ -96,12 +113,24 @@ parameters:
     paramtype: vlogparam
     description: "Number of PMP regions"
 
+  MHPMCounterNum:
+    datatype: int
+    paramtype: vlogparam
+    default: 0
+    description: Number of performance monitor event counters [0/29]
+
+  MHPMCounterWidth:
+    datatype: int
+    paramtype: vlogparam
+    default: 40
+    description: Bit width of performance monitor event counters [32/64]
+
 targets:
   sim:
     default_tool: verilator
     filesets:
-      - tool_verilator ? (files_verilator_waiver)
-      - files_sim_verilator
+      - files_sim
+      - tool_verilator ? (files_verilator)
     parameters:
       - RV32E
       - RV32M
@@ -112,9 +141,14 @@ targets:
       - BranchTargetALU
       - WritebackStage
       - BranchPredictor
+      - DbgTriggerEn
+      - SecureIbex
+      - ICacheScramble
       - PMPEnable
       - PMPGranularity
       - PMPNumRegions
+      - MHPMCounterNum
+      - MHPMCounterWidth
     toplevel: ibex_riscv_compliance
     tools:
       verilator:
@@ -127,6 +161,6 @@ targets:
           - '--trace-structs'
           - '--trace-params'
           - '--trace-max-array 1024'
-          - '-CFLAGS "-std=c++11 -Wall -DVM_TRACE_FMT_FST -DTOPLEVEL_NAME=ibex_riscv_compliance -g"'
+          - '-CFLAGS "-std=c++14 -Wall -DVM_TRACE_FMT_FST -DTOPLEVEL_NAME=ibex_riscv_compliance -g"'
           - '-LDFLAGS "-pthread -lutil -lelf"'
           - "-Wall"

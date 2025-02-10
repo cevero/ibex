@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -98,6 +98,15 @@ class VerilatorSimCtrl {
   void SetResetDuration(unsigned int cycles);
 
   /**
+   * Set a timeout in clock cycles.
+   *
+   * This can be overridden by the user (in either direction) with the
+   * --term-after-cycles command-line argument. Setting to zero means
+   * no timeout, which is the default behaviour.
+   */
+  void SetTimeout(unsigned int cycles);
+
+  /**
    * Request the simulation to stop
    */
   void RequestStop(bool simulation_success);
@@ -118,6 +127,7 @@ class VerilatorSimCtrl {
   CData *sig_rst_;
   VerilatorSimCtrlFlags flags_;
   unsigned long time_;
+  std::string trace_file_path_;
   bool tracing_enabled_;
   bool tracing_enabled_changed_;
   bool tracing_ever_enabled_;
@@ -129,7 +139,7 @@ class VerilatorSimCtrl {
   std::chrono::steady_clock::time_point time_begin_;
   std::chrono::steady_clock::time_point time_end_;
   VerilatedTracer tracer_;
-  int term_after_cycles_;
+  unsigned long term_after_cycles_;
   std::vector<SimCtrlExtension *> extension_array_;
 
   /**
@@ -198,7 +208,7 @@ class VerilatorSimCtrl {
   /**
    * Get the file name of the trace file
    */
-  const char *GetTraceFileName() const;
+  std::string GetTraceFileName() const;
 
   /**
    * Run the main loop of the simulation

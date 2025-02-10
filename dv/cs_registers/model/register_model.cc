@@ -9,6 +9,8 @@
 RegisterModel::RegisterModel(SimCtrl *sc, CSRParams *params) : simctrl_(sc) {
   register_map_.push_back(
       std::make_unique<MSeccfgRegister>(kCSRMSeccfg, &register_map_));
+  register_map_.push_back(
+      std::make_unique<NonImpRegister>(kCSRMSeccfgh, &register_map_));
   // Instantiate all the registers
   for (unsigned int i = 0; i < 4; i++) {
     uint32_t reg_addr = 0x3A0 + i;
@@ -31,11 +33,11 @@ RegisterModel::RegisterModel(SimCtrl *sc, CSRParams *params) : simctrl_(sc) {
     }
   }
   // mcountinhibit
-  // - MSBs are always 1: unused counters cannot be enabled
+  // - MSBs are always 0: unused counters cannot be inhibited
   // - Bit 1 is always 0: time cannot be disabled
   uint32_t mcountinhibit_mask =
       (~((0x1 << params->MHPMCounterNum) - 1) << 3) | 0x2;
-  uint32_t mcountinhibit_resval = ~((0x1 << params->MHPMCounterNum) - 1) << 3;
+  uint32_t mcountinhibit_resval = 0;
   register_map_.push_back(std::make_unique<WARLRegister>(
       0x320, &register_map_, mcountinhibit_mask, mcountinhibit_resval));
   // Performance counter setup
@@ -43,7 +45,7 @@ RegisterModel::RegisterModel(SimCtrl *sc, CSRParams *params) : simctrl_(sc) {
     uint32_t reg_addr = 0x320 + i;
     if (i < (params->MHPMCounterNum + 3)) {
       register_map_.push_back(std::make_unique<WARLRegister>(
-          reg_addr, &register_map_, 0xFFFFFFFF, 0x1 << i));
+          reg_addr, &register_map_, 0xFFFFFFFF, 0x1 << (i - 3)));
     } else {
       register_map_.push_back(
           std::make_unique<NonImpRegister>(reg_addr, &register_map_));

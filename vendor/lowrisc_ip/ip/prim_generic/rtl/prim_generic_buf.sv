@@ -1,14 +1,18 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
 `include "prim_assert.sv"
 
-module prim_generic_buf (
-  input in_i,
-  output logic out_o
+module prim_generic_buf #(
+  parameter int Width = 1
+) (
+  input        [Width-1:0] in_i,
+  output logic [Width-1:0] out_o
 );
 
-  assign out_o = in_i;
+  logic [Width-1:0] inv;
+  assign inv = ~in_i;
+  assign out_o = ~inv;
 
-endmodule : prim_generic_buf
+endmodule

@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -60,15 +60,62 @@ std::pair<int, bool> VerilatorSimCtrl::Exec(int argc, char **argv) {
   return std::make_pair(retcode, true);
 }
 
+static bool read_ul_arg(unsigned long *arg_val, const char *arg_name,
+                        const char *arg_text) {
+  assert(arg_val && arg_name && arg_text);
+
+  bool bad_fmt = false;
+  bool out_of_range = false;
+
+  // We have a stricter input format that strtoul: no leading space and no
+  // leading plus or minus signs (strtoul has magic behaviour if the input
+  // starts with a minus sign, but we don't want that). We're using auto base
+  // detection, but a valid number will always start with 0-9 (since hex
+  // constants start with "0x")
+  if (!(('0' <= arg_text[0]) && (arg_text[0] <= '9'))) {
+    bad_fmt = true;
+  } else {
+    char *txt_end;
+    errno = 0;
+    *arg_val = strtoul(arg_text, &txt_end, 0);
+
+    // If txt_end doesn't point at a \0 then we didn't read the entire
+    // argument.
+    if (*txt_end) {
+      bad_fmt = true;
+    } else {
+      // If the value was too big to fit in an unsigned long, strtoul sets
+      // errno to ERANGE.
+      if (errno != 0) {
+        assert(errno == ERANGE);
+        out_of_range = true;
+      }
+    }
+  }
+
+  if (bad_fmt) {
+    std::cerr << "ERROR: Bad format for " << arg_name << " argument: `"
+              << arg_text << "' is not an unsigned integer.\n";
+    return false;
+  }
+  if (out_of_range) {
+    std::cerr << "ERROR: Bad format for " << arg_name << " argument: `"
+              << arg_text << "' is too big.\n";
+    return false;
+  }
+
+  return true;
+}
+
 bool VerilatorSimCtrl::ParseCommandArgs(int argc, char **argv, bool &exit_app) {
   const struct option long_options[] = {
       {"term-after-cycles", required_argument, nullptr, 'c'},
-      {"trace", no_argument, nullptr, 't'},
+      {"trace", optional_argument, nullptr, 't'},
       {"help", no_argument, nullptr, 'h'},
       {nullptr, no_argument, nullptr, 0}};
 
   while (1) {
-    int c = getopt_long(argc, argv, ":c:th", long_options, nullptr);
+    int c = getopt_long(argc, argv, "-:c:th", long_options, nullptr);
     if (c == -1) {
       break;
     }
@@ -78,6 +125,7 @@ bool VerilatorSimCtrl::ParseCommandArgs(int argc, char **argv, bool &exit_app) {
 
     switch (c) {
       case 0:
+      case 1:
         break;
       case 't':
         if (!tracing_possible_) {
@@ -86,10 +134,16 @@ bool VerilatorSimCtrl::ParseCommandArgs(int argc, char **argv, bool &exit_app) {
           exit_app = true;
           return false;
         }
+        if (optarg != nullptr) {
+          trace_file_path_.assign(optarg);
+        }
         TraceOn();
         break;
       case 'c':
-        term_after_cycles_ = atoi(optarg);
+        if (!read_ul_arg(&term_after_cycles_, "term-after-cycles", optarg)) {
+          exit_app = true;
+          return false;
+        }
         break;
       case 'h':
         PrintHelp();
@@ -159,6 +213,10 @@ void VerilatorSimCtrl::SetResetDuration(unsigned int cycles) {
   reset_duration_cycles_ = cycles;
 }
 
+void VerilatorSimCtrl::SetTimeout(unsigned int cycles) {
+  term_after_cycles_ = cycles;
+}
+
 void VerilatorSimCtrl::RequestStop(bool simulation_success) {
   request_stop_ = true;
   simulation_success_ &= simulation_success;
@@ -171,6 +229,11 @@ void VerilatorSimCtrl::RegisterExtension(SimCtrlExtension *ext) {
 VerilatorSimCtrl::VerilatorSimCtrl()
     : top_(nullptr),
       time_(0),
+#ifdef VM_TRACE_FMT_FST
+      trace_file_path_("sim.fst"),
+#else
+      trace_file_path_("sim.vcd"),
+#endif
       tracing_enabled_(false),
       tracing_enabled_changed_(false),
       tracing_ever_enabled_(false),
@@ -180,7 +243,8 @@ VerilatorSimCtrl::VerilatorSimCtrl()
       request_stop_(false),
       simulation_success_(true),
       tracer_(VerilatedTracer()),
-      term_after_cycles_(0) {}
+      term_after_cycles_(0) {
+}
 
 void VerilatorSimCtrl::RegisterSignalHandler() {
   struct sigaction sigIntHandler;
@@ -214,10 +278,11 @@ void VerilatorSimCtrl::PrintHelp() const {
   std::cout << "Execute a simulation model for " << GetName() << "\n\n";
   if (tracing_possible_) {
     std::cout << "-t|--trace\n"
+                 "   --trace=FILE\n"
                  "  Write a trace file from the start\n\n";
   }
   std::cout << "-c|--term-after-cycles=N\n"
-               "  Terminate simulation after N cycles\n\n"
+               "  Terminate simulation after N cycles. 0 means no timeout.\n\n"
                "-h|--help\n"
                "  Show help\n\n"
                "All arguments are passed to the design and can be used "
@@ -251,7 +316,7 @@ void VerilatorSimCtrl::PrintStatistics() const {
   std::cout << std::endl
             << "Simulation statistics" << std::endl
             << "=====================" << std::endl
-            << "Executed cycles:  " << time_ / 2 << std::endl
+            << "Executed cycles:  " << std::dec << time_ / 2 << std::endl
             << "Wallclock time:   " << GetExecutionTimeMs() / 1000.0 << " s"
             << std::endl
             << "Simulation speed: " << speed_hz << " cycles/s "
@@ -263,12 +328,8 @@ void VerilatorSimCtrl::PrintStatistics() const {
   }
 }
 
-const char *VerilatorSimCtrl::GetTraceFileName() const {
-#ifdef VM_TRACE_FMT_FST
-  return "sim.fst";
-#else
-  return "sim.vcd";
-#endif
+std::string VerilatorSimCtrl::GetTraceFileName() const {
+  return trace_file_path_;
 }
 
 void VerilatorSimCtrl::Run() {
@@ -400,7 +461,7 @@ void VerilatorSimCtrl::Trace() {
   }
 
   if (!tracer_.isOpen()) {
-    tracer_.open(GetTraceFileName());
+    tracer_.open(GetTraceFileName().c_str());
     std::cout << "Writing simulation traces to " << GetTraceFileName()
               << std::endl;
   }

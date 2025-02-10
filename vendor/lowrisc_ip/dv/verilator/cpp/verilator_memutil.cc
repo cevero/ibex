@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -98,6 +98,7 @@ bool VerilatorMemUtil::ParseCLIArguments(int argc, char **argv,
       {"rominit", required_argument, nullptr, 'r'},
       {"raminit", required_argument, nullptr, 'm'},
       {"flashinit", required_argument, nullptr, 'f'},
+      {"otpinit", required_argument, nullptr, 'o'},
       {"meminit", required_argument, nullptr, 'l'},
       {"verbose-mem-load", no_argument, nullptr, 'V'},
       {"load-elf", required_argument, nullptr, 'E'},
@@ -111,7 +112,7 @@ bool VerilatorMemUtil::ParseCLIArguments(int argc, char **argv,
   // some arguments
   optind = 1;
   while (1) {
-    int c = getopt_long(argc, argv, ":r:m:f:l:E:h", long_options, nullptr);
+    int c = getopt_long(argc, argv, "-:r:m:f:l:E:h", long_options, nullptr);
     if (c == -1) {
       break;
     }
@@ -121,6 +122,7 @@ bool VerilatorMemUtil::ParseCLIArguments(int argc, char **argv,
 
     switch (c) {
       case 0:
+      case 1:
         break;
       case 'r':
         load_args.push_back(
@@ -133,6 +135,10 @@ bool VerilatorMemUtil::ParseCLIArguments(int argc, char **argv,
       case 'f':
         load_args.push_back(
             {.name = "flash", .filepath = optarg, .type = kMemImageUnknown});
+        break;
+      case 'o':
+        load_args.push_back(
+            {.name = "otp", .filepath = optarg, .type = kMemImageUnknown});
         break;
       case 'l':
         if (strcasecmp(optarg, "list") == 0) {

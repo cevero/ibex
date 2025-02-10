@@ -36,9 +36,12 @@ module ibex_simple_system (
 );
 
   parameter bit                 SecureIbex               = 1'b0;
+  parameter bit                 ICacheScramble           = 1'b0;
   parameter bit                 PMPEnable                = 1'b0;
   parameter int unsigned        PMPGranularity           = 0;
   parameter int unsigned        PMPNumRegions            = 4;
+  parameter int unsigned        MHPMCounterNum           = 0;
+  parameter int unsigned        MHPMCounterWidth         = 40;
   parameter bit                 RV32E                    = 1'b0;
   parameter ibex_pkg::rv32m_e   RV32M                    = `RV32M;
   parameter ibex_pkg::rv32b_e   RV32B                    = `RV32B;
@@ -46,6 +49,7 @@ module ibex_simple_system (
   parameter bit                 BranchTargetALU          = 1'b0;
   parameter bit                 WritebackStage           = 1'b0;
   parameter bit                 ICache                   = 1'b0;
+  parameter bit                 DbgTriggerEn             = 1'b0;
   parameter bit                 ICacheECC                = 1'b0;
   parameter bit                 BranchPredictor          = 1'b0;
   parameter                     SRAMInitFile             = "";
@@ -78,6 +82,9 @@ module ibex_simple_system (
   logic           host_rvalid [NrHosts];
   logic [31:0]    host_rdata  [NrHosts];
   logic           host_err    [NrHosts];
+
+  logic [6:0]     data_rdata_intg;
+  logic [6:0]     instr_rdata_intg;
 
   // devices (slaves)
   logic           device_req    [NrDevices];
@@ -161,62 +168,98 @@ module ibex_simple_system (
     .cfg_device_addr_mask
   );
 
-  ibex_core_tracing #(
-      .SecureIbex      ( SecureIbex      ),
-      .PMPEnable       ( PMPEnable       ),
-      .PMPGranularity  ( PMPGranularity  ),
-      .PMPNumRegions   ( PMPNumRegions   ),
-      .MHPMCounterNum  ( 29              ),
-      .RV32E           ( RV32E           ),
-      .RV32M           ( RV32M           ),
-      .RV32B           ( RV32B           ),
-      .RegFile         ( RegFile         ),
-      .BranchTargetALU ( BranchTargetALU ),
-      .ICache          ( ICache          ),
-      .ICacheECC       ( ICacheECC       ),
-      .WritebackStage  ( WritebackStage  ),
-      .BranchPredictor ( BranchPredictor ),
-      .DmHaltAddr      ( 32'h00100000    ),
-      .DmExceptionAddr ( 32'h00100000    )
-    ) u_core (
-      .clk_i                 (clk_sys),
-      .rst_ni                (rst_sys_n),
+  if (SecureIbex) begin : g_mem_rdata_ecc
+    logic [31:0] unused_data_rdata;
+    logic [31:0] unused_instr_rdata;
 
-      .test_en_i             ('b0),
+    prim_secded_inv_39_32_enc u_data_rdata_intg_gen (
+      .data_i (host_rdata[CoreD]),
+      .data_o ({data_rdata_intg, unused_data_rdata})
+    );
 
-      .hart_id_i             (32'b0),
+    prim_secded_inv_39_32_enc u_instr_rdata_intg_gen (
+      .data_i (instr_rdata),
+      .data_o ({instr_rdata_intg, unused_instr_rdata})
+    );
+  end else begin : g_no_mem_rdata_ecc
+    assign data_rdata_intg = '0;
+    assign instr_rdata_intg = '0;
+  end
+
+  ibex_top_tracing #(
+      .SecureIbex      ( SecureIbex       ),
+      .ICacheScramble  ( ICacheScramble   ),
+      .PMPEnable       ( PMPEnable        ),
+      .PMPGranularity  ( PMPGranularity   ),
+      .PMPNumRegions   ( PMPNumRegions    ),
+      .MHPMCounterNum  ( MHPMCounterNum   ),
+      .MHPMCounterWidth( MHPMCounterWidth ),
+      .RV32E           ( RV32E            ),
+      .RV32M           ( RV32M            ),
+      .RV32B           ( RV32B            ),
+      .RegFile         ( RegFile          ),
+      .BranchTargetALU ( BranchTargetALU  ),
+      .ICache          ( ICache           ),
+      .ICacheECC       ( ICacheECC        ),
+      .WritebackStage  ( WritebackStage   ),
+      .BranchPredictor ( BranchPredictor  ),
+      .DbgTriggerEn    ( DbgTriggerEn     ),
+      .DmBaseAddr      ( 32'h00100000     ),
+      .DmAddrMask      ( 32'h00000003     ),
+      .DmHaltAddr      ( 32'h00100000     ),
+      .DmExceptionAddr ( 32'h00100000     )
+    ) u_top (
+      .clk_i                  (clk_sys),
+      .rst_ni                 (rst_sys_n),
+
+      .test_en_i              (1'b0),
+      .scan_rst_ni            (1'b1),
+      .ram_cfg_i              (prim_ram_1p_pkg::RAM_1P_CFG_DEFAULT),
+
+      .hart_id_i              (32'b0),
       // First instruction executed is at 0x0 + 0x80
-      .boot_addr_i           (32'h00100000),
+      .boot_addr_i            (32'h00100000),
 
-      .instr_req_o           (instr_req),
-      .instr_gnt_i           (instr_gnt),
-      .instr_rvalid_i        (instr_rvalid),
-      .instr_addr_o          (instr_addr),
-      .instr_rdata_i         (instr_rdata),
-      .instr_err_i           (instr_err),
+      .instr_req_o            (instr_req),
+      .instr_gnt_i            (instr_gnt),
+      .instr_rvalid_i         (instr_rvalid),
+      .instr_addr_o           (instr_addr),
+      .instr_rdata_i          (instr_rdata),
+      .instr_rdata_intg_i     (instr_rdata_intg),
+      .instr_err_i            (instr_err),
 
-      .data_req_o            (host_req[CoreD]),
-      .data_gnt_i            (host_gnt[CoreD]),
-      .data_rvalid_i         (host_rvalid[CoreD]),
-      .data_we_o             (host_we[CoreD]),
-      .data_be_o             (host_be[CoreD]),
-      .data_addr_o           (host_addr[CoreD]),
-      .data_wdata_o          (host_wdata[CoreD]),
-      .data_rdata_i          (host_rdata[CoreD]),
-      .data_err_i            (host_err[CoreD]),
+      .data_req_o             (host_req[CoreD]),
+      .data_gnt_i             (host_gnt[CoreD]),
+      .data_rvalid_i          (host_rvalid[CoreD]),
+      .data_we_o              (host_we[CoreD]),
+      .data_be_o              (host_be[CoreD]),
+      .data_addr_o            (host_addr[CoreD]),
+      .data_wdata_o           (host_wdata[CoreD]),
+      .data_wdata_intg_o      (),
+      .data_rdata_i           (host_rdata[CoreD]),
+      .data_rdata_intg_i      (data_rdata_intg),
+      .data_err_i             (host_err[CoreD]),
 
-      .irq_software_i        (1'b0),
-      .irq_timer_i           (timer_irq),
-      .irq_external_i        (1'b0),
-      .irq_fast_i            (15'b0),
-      .irq_nm_i              (1'b0),
+      .irq_software_i         (1'b0),
+      .irq_timer_i            (timer_irq),
+      .irq_external_i         (1'b0),
+      .irq_fast_i             (15'b0),
+      .irq_nm_i               (1'b0),
 
-      .debug_req_i           ('b0),
+      .scramble_key_valid_i   ('0),
+      .scramble_key_i         ('0),
+      .scramble_nonce_i       ('0),
+      .scramble_req_o         (),
 
-      .fetch_enable_i        ('b1),
-      .alert_minor_o         (),
-      .alert_major_o         (),
-      .core_sleep_o          ()
+      .debug_req_i            (1'b0),
+      .crash_dump_o           (),
+      .double_fault_seen_o    (),
+
+      .fetch_enable_i         (ibex_pkg::IbexMuBiOn),
+      .alert_minor_o          (),
+      .alert_major_internal_o (),
+      .alert_major_bus_o      (),
+      .core_sleep_o           ()
     );
 
   // SRAM block for instruction and data storage
@@ -277,10 +320,16 @@ module ibex_simple_system (
       .timer_intr_o   (timer_irq)
     );
 
+  export "DPI-C" function mhpmcounter_num;
+
+  function automatic int unsigned mhpmcounter_num();
+    return u_top.u_ibex_top.u_ibex_core.cs_registers_i.MHPMCounterNum;
+  endfunction
+
   export "DPI-C" function mhpmcounter_get;
 
-  function automatic longint mhpmcounter_get(int index);
-    return u_core.u_ibex_core.cs_registers_i.mhpmcounter[index];
+  function automatic longint unsigned mhpmcounter_get(int index);
+    return u_top.u_ibex_top.u_ibex_core.cs_registers_i.mhpmcounter[index];
   endfunction
 
 endmodule

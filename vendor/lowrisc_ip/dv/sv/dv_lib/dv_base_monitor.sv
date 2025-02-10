@@ -1,8 +1,10 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
 class dv_base_monitor #(type ITEM_T = uvm_sequence_item,
+                        type REQ_ITEM_T = ITEM_T,
+                        type RSP_ITEM_T = ITEM_T,
                         type CFG_T  = dv_base_agent_cfg,
                         type COV_T  = dv_base_agent_cov) extends uvm_monitor;
   `uvm_component_param_utils(dv_base_monitor #(ITEM_T, CFG_T, COV_T))
@@ -20,21 +22,28 @@ class dv_base_monitor #(type ITEM_T = uvm_sequence_item,
   // Analysis port for the collected transfer.
   uvm_analysis_port #(ITEM_T) analysis_port;
 
+  // item will be sent to this port for seq when req phase is done (last is set)
+  uvm_analysis_port #(REQ_ITEM_T) req_analysis_port;
+  // item will be sent to this port for seq when rsp phase is done (rsp_done is set)
+  uvm_analysis_port #(RSP_ITEM_T) rsp_analysis_port;
+
   `uvm_component_new
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     analysis_port = new("analysis_port", this);
+    req_analysis_port = new("req_analysis_port", this);
+    rsp_analysis_port = new("rsp_analysis_port", this);
   endfunction
 
   virtual task run_phase(uvm_phase phase);
     fork
-      collect_trans(phase);
+      collect_trans();
     join
   endtask
 
   // collect transactions forever
-  virtual protected task collect_trans(uvm_phase phase);
+  virtual protected task collect_trans();
     `uvm_fatal(`gfn, "this method is not supposed to be called directly!")
   endtask
 
@@ -68,7 +77,7 @@ class dv_base_monitor #(type ITEM_T = uvm_sequence_item,
       end
 
       // Start the timer only when ok_to_end is asserted.
-      wait(ok_to_end);
+      wait (ok_to_end);
       `uvm_info(`gfn, $sformatf("watchdog_ok_to_end: starting the timer (count: %0d)",
                                 watchdog_restart_count++), UVM_MEDIUM)
       fork
@@ -79,15 +88,11 @@ class dv_base_monitor #(type ITEM_T = uvm_sequence_item,
               #(cfg.ok_to_end_delay_ns * 1ns);
               watchdog_done = 1'b1;
             end
-            @(ok_to_end);
+            wait (!ok_to_end);
           join_any
           disable fork;
         end: isolation_fork
       join
-
-      // The #0 delay ensures that we sample the stabilized value of ok_to_end in the condition
-      // below in case it toggles more than once in the same simulation time-step.
-      #0;
 
       // If ok_to_end stayed high throughout the watchdog timer expiry, then drop the objection.
       if (ok_to_end && watchdog_done) begin
@@ -96,7 +101,7 @@ class dv_base_monitor #(type ITEM_T = uvm_sequence_item,
         objection_raised = 1'b0;
 
         // Wait for ok_to_end to de-assert again in future.
-        wait(!ok_to_end);
+        wait (!ok_to_end);
       end
     end
   endtask

@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -11,6 +11,7 @@
 // widths remain untested.
 
 module prim_prince_tb;
+  `include "dv_macros.svh"
 
 //////////////////////////////////////////////////////
 // config
@@ -31,6 +32,8 @@ module prim_prince_tb;
   localparam int unsigned KeyWidth = 128;
 `endif
 
+  localparam string MSG_ID = $sformatf("%m");
+
   // Max number of half-rounds according to spec.
   // Duplicate parameter definition here to avoid clutter due to long identifier.
   localparam int unsigned NumRoundsHalf = crypto_dpi_prince_pkg::NumRoundsHalf;
@@ -43,6 +46,11 @@ module prim_prince_tb;
   localparam bit OldKeySched = 1'b1;
 
   localparam time ClkPeriod = 10000;
+
+  // This bit can be set from the command line to indicate that we are running a smoke regression,
+  // and to run just a single iteration of the test.
+  // This helps drastically reduce runtimes in the CI flows.
+  bit smoke_test;
 
 //////////////////////////////////////////////////////
 // Clock interface
@@ -100,13 +108,12 @@ module prim_prince_tb;
                              bit [KeyWidth-1:0]  key);
 
     bit [1:0][1:0][NumRoundsHalf-1:0][DataWidth-1:0] encrypted_text;
-    $display("Starting encryption with data[0x%0x] and key[0x%0x]!", plaintext, key);
+
     check_encryption(plaintext, key, encrypted_text);
-    $display("Starting decryption pass!");
+
     check_decryption(encrypted_text, key);
 
   endtask
-
 
 
   // Helper task to drive plaintext and key into each encryption instance.
@@ -119,7 +126,7 @@ module prim_prince_tb;
     // Drive input into encryption instances.
     key_in    = key;
     dec_in    = 0;
-    valid_in  = 1;
+    valid_in = 0;
     for (int unsigned i = 0; i < 2; i++) begin
       for (int unsigned j = 0; j < 2; j++) begin
         for (int unsigned k = 0; k < NumRoundsHalf; k++) begin
@@ -127,10 +134,14 @@ module prim_prince_tb;
         end
       end
     end
+    // wait some time before signaling that the inputs are valid
+    clk_if.wait_clks($urandom_range(0, 10));
+    valid_in  = 1;
     // Wait for the DUTs to finish calculations.
     clk_if.wait_clks(2);
     wait(&valid_out == 1);
     valid_in = 0;
+    clk_if.wait_clks(1);
     // query DPI model for expected encrypted output.
     for (int i = 0; i < 2; i++) begin
       for (int j = 0; j < 2; j++) begin
@@ -157,7 +168,7 @@ module prim_prince_tb;
     // Drive input into decryption instances.
     key_in = key;
     dec_in = 1;
-    valid_in = 1;
+    valid_in = 0;
     for (int unsigned i = 0; i < 2; i++) begin
       for (int unsigned j = 0; j < 2; j++) begin
         for (int unsigned k = 0; k < NumRoundsHalf; k++) begin
@@ -165,6 +176,9 @@ module prim_prince_tb;
         end
       end
     end
+    // wait some time before signaling that the inputs are valid
+    clk_if.wait_clks($urandom_range(0, 10));
+    valid_in = 1;
     // Wait for the DUTs to finish calculations.
     clk_if.wait_clks(2);
     wait(&valid_out == 1);
@@ -209,39 +223,44 @@ module prim_prince_tb;
           err_msg = {$sformatf("%s mismatch in %s design with %0d rounds and old key schedule!\n",
                                msg, reg_msg, i+1),
                      $sformatf("Expected[0x%0x] - Actual[0x%0x]\n", expected_text_old_sched[i][j],
-                               actual_text_old_sched[i][j]),
-                     "TEST FAILED CHECKS"};
-          $fatal(err_msg);
+                               actual_text_old_sched[i][j])};
+          $error(err_msg);
+          dv_test_status_pkg::dv_test_status(.passed(1'b0));
         end
         // compare outputs generated using new key schedule.
         if (expected_text_new_sched[i][j] != actual_text_new_sched[i][j]) begin
           err_msg = {$sformatf("%s mismatch in %s design with %0d rounds and old key schedule!\n",
                                msg, reg_msg, i+1),
                      $sformatf("Expected[0x%0x] - Actual[0x%0x]\n", expected_text_new_sched[i][j],
-                               actual_text_new_sched[i][j]),
-                     "TEST FAILED CHECKS"};
-          $fatal(err_msg);
+                               actual_text_new_sched[i][j])};
+          $error(err_msg);
+          dv_test_status_pkg::dv_test_status(.passed(1'b0));
         end
       end
     end
   endtask
-
 
 //////////////////////////////////////////////////////
 // main testbench body
 //////////////////////////////////////////////////////
 
   initial begin : p_stimuli
+    int num_trans;
 
     // The key and plaintext/ciphertext to be fed into PRINCE instances.
     bit [KeyWidth/2-1:0] k0, k1;
     bit [DataWidth-1:0] plaintext;
 
-    clk_if.set_period_ns(ClkPeriod);
-    clk_if.set_active();
-    clk_if.apply_reset();
     $timeformat(-12, 0, " ps", 12);
-    clk_if.wait_clks(10);
+    clk_if.set_period_ps(ClkPeriod);
+    clk_if.set_active();
+    // Toggle reset twice at start of the test to hit a small toggle coverage point:
+    // - rst_ni: 1 -> 0
+    // No additional functional impact
+    clk_if.apply_reset();
+    clk_if.wait_clks(5);
+    clk_if.apply_reset();
+    clk_if.wait_clks(5);
 
     /////////////////////////////
     // Test the 5 golden vectors.
@@ -273,25 +292,31 @@ module prim_prince_tb;
     test_prince(plaintext, {k1, k0});
 
     // Test random vectors
-    for (int i = 0; i < 25000; i++) begin
-      if (!std::randomize(plaintext)) begin
-        $fatal("Randomization of plaintext failed!");
-      end
-      if (!std::randomize(k0)) begin
-        $fatal("Randomization of k0 failed!");
-      end
-      if (!std::randomize(k1)) begin
-        $fatal("Randomization of k1 failed!");
-      end
+    void'($value$plusargs("smoke_test=%0b", smoke_test));
+    num_trans = smoke_test ? 1 : $urandom_range(5000, 25000);
+    for (int i = 0; i < num_trans; i++) begin
+      `DV_CHECK_STD_RANDOMIZE_FATAL(plaintext, "", MSG_ID)
+      `DV_CHECK_STD_RANDOMIZE_FATAL(k0, "", MSG_ID)
+      `DV_CHECK_STD_RANDOMIZE_FATAL(k1, "", MSG_ID)
       test_prince(plaintext, {k1, k0});
     end
 
-
     // Final error checking and print out the test signature (expected by simulation flow).
     $display("All encryption and decryption passes were successful!");
-    $display("TEST PASSED CHECKS");
+    dv_test_status_pkg::dv_test_status(.passed(1'b1));
     $finish();
   end
 
+  // TODO: perhaps wrap this in a macro?
+  initial begin
+    bit poll_for_stop;
+    int unsigned poll_for_stop_interval_ns;
+
+    poll_for_stop = 1'b1;
+    void'($value$plusargs("poll_for_stop=%0b", poll_for_stop));
+    poll_for_stop_interval_ns = 1000;
+    void'($value$plusargs("poll_for_stop_interval_ns=%0d", poll_for_stop_interval_ns));
+    if (poll_for_stop) dv_utils_pkg::poll_for_stop(.interval_ns(poll_for_stop_interval_ns));
+  end
 
 endmodule : prim_prince_tb

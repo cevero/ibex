@@ -1,4 +1,4 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -62,6 +62,9 @@ def test_subst_wildcards():
 
     # Some eval_cmd calls (using echo, which should always work)
     assert (subst_wildcards('{eval_cmd}echo foo {b}', {'b': 'bar'}) ==
+            'foo bar')
+
+    assert (subst_wildcards('foo {eval_cmd}echo {b}', {'b': 'bar'}) ==
             'foo bar')
 
     # Make sure that nested commands work

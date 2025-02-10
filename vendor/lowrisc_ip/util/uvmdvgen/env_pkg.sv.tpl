@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -16,6 +16,7 @@ package ${name}_env_pkg;
   import cip_base_pkg::*;
 % endif
 % if has_ral:
+  import dv_base_reg_pkg::*;
   import csr_utils_pkg::*;
   import ${name}_ral_pkg::*;
 % endif

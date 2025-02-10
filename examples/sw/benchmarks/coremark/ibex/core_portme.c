@@ -169,12 +169,15 @@ void portable_init(core_portable *p, int *argc, char *argv[]) {
     ee_printf("ERROR! Please define ee_u32 to a 32b unsigned type!\n");
   }
   p->portable_id = 1;
+  icache_enable(1);
 }
 /* Function : portable_fini
         Target specific final code
 */
 void portable_fini(core_portable *p) {
+#ifndef SUPPRESS_PCOUNT_DUMP
   dump_pcounts();
+#endif
 
   CORE_TICKS elapsed = get_time();
   float coremark_mhz;

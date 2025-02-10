@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -13,7 +13,6 @@ module prim_generic_flash #(
   parameter int PagesPerBank   = 256,// data pages per bank
   parameter int WordsPerPage   = 256,// words per page
   parameter int DataWidth      = 32, // bits per word
-  parameter int MetaDataWidth  = 12, // metadata such as ECC
   parameter int TestModeWidth  = 2
 ) (
   input clk_i,
@@ -26,19 +25,24 @@ module prim_generic_flash #(
   input tdi_i,
   input tms_i,
   output logic tdo_o,
-  input bist_enable_i,
-  input scanmode_i,
+  input prim_mubi_pkg::mubi4_t bist_enable_i,
+  input prim_mubi_pkg::mubi4_t scanmode_i,
+  input scan_en_i,
   input scan_rst_ni,
   input flash_power_ready_h_i,
   input flash_power_down_h_i,
-  input [TestModeWidth-1:0] flash_test_mode_a_i,
-  input flash_test_voltage_h_i,
+  inout [TestModeWidth-1:0] flash_test_mode_a_io,
+  inout flash_test_voltage_h_io,
+  output logic flash_err_o,
+  // Alert indication (to be connected to alert sender in the instantiating IP)
+  output logic fatal_alert_o,
+  output logic recov_alert_o,
   input tlul_pkg::tl_h2d_t tl_i,
-  output tlul_pkg::tl_d2h_t tl_o
+  output tlul_pkg::tl_d2h_t tl_o,
+  // Observability
+  input ast_pkg::ast_obs_ctrl_t obs_ctrl_i,
+  output logic [7:0] fla_obs_o
 );
-
-  localparam int CfgRegs = 21;
-  localparam int CfgAddrWidth = $clog2(CfgRegs);
 
   // convert this into a tlul write later
   logic init;
@@ -52,9 +56,6 @@ module prim_generic_flash #(
   assign prog_type_avail_o[flash_ctrl_pkg::FlashProgRepair] = 1'b1;
 
   for (genvar bank = 0; bank < NumBanks; bank++) begin : gen_prim_flash_banks
-    logic erase_suspend_req;
-    assign erase_suspend_req = flash_req_i[bank].erase_suspend_req &
-                               (flash_req_i[bank].pg_erase_req | flash_req_i[bank].bk_erase_req);
 
     prim_generic_flash_bank #(
       .InfosPerBank(InfosPerBank),
@@ -62,8 +63,7 @@ module prim_generic_flash #(
       .InfoTypesWidth(InfoTypesWidth),
       .PagesPerBank(PagesPerBank),
       .WordsPerPage(WordsPerPage),
-      .DataWidth(DataWidth),
-      .MetaDataWidth(MetaDataWidth)
+      .DataWidth(DataWidth)
     ) u_prim_flash_bank (
       .clk_i,
       .rst_ni,
@@ -73,7 +73,7 @@ module prim_generic_flash #(
       .prog_type_i(flash_req_i[bank].prog_type),
       .pg_erase_i(flash_req_i[bank].pg_erase_req),
       .bk_erase_i(flash_req_i[bank].bk_erase_req),
-      .erase_suspend_req_i(erase_suspend_req),
+      .erase_suspend_req_i(flash_req_i[bank].erase_suspend_req),
       .he_i(flash_req_i[bank].he),
       .addr_i(flash_req_i[bank].addr),
       .part_i(flash_req_i[bank].part),
@@ -90,6 +90,7 @@ module prim_generic_flash #(
   end
 
   logic unused_scanmode;
+  logic unused_scan_en;
   logic unused_scan_rst_n;
   logic [TestModeWidth-1:0] unused_flash_test_mode;
   logic unused_flash_test_voltage;
@@ -97,66 +98,49 @@ module prim_generic_flash #(
   logic unused_tdi;
   logic unused_tms;
 
-  assign unused_scanmode = scanmode_i;
+  assign unused_scanmode = ^scanmode_i;
+  assign unused_scan_en = scan_en_i;
   assign unused_scan_rst_n = scan_rst_ni;
-  assign unused_flash_test_mode = flash_test_mode_a_i;
-  assign unused_flash_test_voltage = flash_test_voltage_h_i;
+  assign unused_flash_test_mode = flash_test_mode_a_io;
+  assign unused_flash_test_voltage = flash_test_voltage_h_io;
   assign unused_tck = tck_i;
   assign unused_tdi = tdi_i;
   assign unused_tms = tms_i;
   assign tdo_o = '0;
 
-  // fake memory used to emulate configuration
-  logic cfg_req;
-  logic cfg_we;
-  logic [CfgAddrWidth-1:0] cfg_addr;
-  logic [31:0] cfg_wdata;
-  logic cfg_rvalid;
-  logic [31:0] cfg_rdata;
+  ////////////////////////////////////
+  // TL-UL Test Interface Emulation //
+  ////////////////////////////////////
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      cfg_rvalid <= 1'b0;
-    end else begin
-      cfg_rvalid <= cfg_req & !cfg_we;
-    end
-  end
-
-  tlul_adapter_sram #(
-    .SramAw(CfgAddrWidth),
-    .SramDw(32),
-    .Outstanding(2),
-    .ErrOnWrite(1)
-  ) u_cfg (
+  logic intg_err;
+  flash_ctrl_reg_pkg::flash_ctrl_prim_reg2hw_t reg2hw;
+  flash_ctrl_reg_pkg::flash_ctrl_prim_hw2reg_t hw2reg;
+  flash_ctrl_prim_reg_top u_reg_top (
     .clk_i,
     .rst_ni,
-    .tl_i,
-    .tl_o,
-    .req_o(cfg_req),
-    .gnt_i(1'b1),
-    .we_o(cfg_we),
-    .addr_o(cfg_addr),
-    .wdata_o(cfg_wdata),
-    .wmask_o(),
-    .rdata_i(cfg_rdata),
-    .rvalid_i(cfg_rvalid),
-    .rerror_i('0)
+    .tl_i      (tl_i),
+    .tl_o      (tl_o),
+    .reg2hw    (reg2hw),
+    .hw2reg    (hw2reg),
+    .intg_err_o(intg_err)
   );
 
-  prim_ram_1p #(
-    .Width(32),
-    .Depth(CfgRegs)
-  ) u_cfg_ram (
-    .clk_i,
-    .req_i(cfg_req),
-    .write_i(cfg_we),
-    .addr_i(cfg_addr),
-    .wdata_i(cfg_wdata),
-    .wmask_i({32{1'b1}}),
-    .rdata_o(cfg_rdata)
-  );
+  logic unused_reg_sig;
+  assign unused_reg_sig = ^reg2hw;
+  assign hw2reg = '0;
 
   logic unused_bist_enable;
-  assign unused_bist_enable = bist_enable_i;
+  assign unused_bist_enable = ^bist_enable_i;
+
+  // open source model has no error response at the moment
+  assign flash_err_o = 1'b0;
+
+  assign fatal_alert_o = intg_err;
+  assign recov_alert_o = 1'b0;
+
+  logic unused_obs;
+  assign unused_obs = |obs_ctrl_i;
+  assign fla_obs_o = '0;
+
 
 endmodule // prim_generic_flash

@@ -1,4 +1,4 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 r"""
@@ -7,12 +7,12 @@ Class describing a one-shot build configuration object
 
 import logging as log
 import os
-import sys
 from collections import OrderedDict
 
 from Deploy import CompileOneShot
 from FlowCfg import FlowCfg
-from Modes import BuildModes, Modes
+from modes import BuildMode, Mode
+from utils import rm_path
 
 
 class OneShotCfg(FlowCfg):
@@ -47,7 +47,6 @@ class OneShotCfg(FlowCfg):
         self.scratch_path = ""
         self.build_dir = ""
         self.run_dir = ""
-        self.sw_build_dir = ""
         self.pass_patterns = []
         self.fail_patterns = []
         self.name = ""
@@ -88,7 +87,8 @@ class OneShotCfg(FlowCfg):
         super()._expand()
 
         # Stuff below only pertains to individual cfg (not primary cfg).
-        if not self.is_primary_cfg:
+        if not self.is_primary_cfg and (not self.select_cfgs or
+                                        self.name in self.select_cfgs):
             # Print scratch_path at the start:
             log.info("[scratch_path]: [%s] [%s]", self.name, self.scratch_path)
 
@@ -110,18 +110,14 @@ class OneShotCfg(FlowCfg):
 
     # Purge the output directories. This operates on self.
     def _purge(self):
-        if self.scratch_path:
-            try:
-                log.info("Purging scratch path %s", self.scratch_path)
-                os.system("/bin/rm -rf " + self.scratch_path)
-            except IOError:
-                log.error('Failed to purge scratch directory %s',
-                          self.scratch_path)
+        assert self.scratch_path
+        log.info("Purging scratch path %s", self.scratch_path)
+        rm_path(self.scratch_path)
 
     def _create_objects(self):
         # Create build and run modes objects
-        build_modes = Modes.create_modes(BuildModes,
-                                         getattr(self, "build_modes"))
+        build_modes = Mode.create_modes(BuildMode,
+                                        getattr(self, "build_modes"))
         setattr(self, "build_modes", build_modes)
 
         # All defined build modes are being built, h
@@ -142,31 +138,17 @@ class OneShotCfg(FlowCfg):
     def _create_dirs(self):
         '''Create initial set of directories
         '''
-        # Invoking system calls has a performance penalty.
-        # Construct a single command line chained with '&&' to invoke
-        # the system call only once, rather than multiple times.
-        create_link_dirs_cmd = ""
         for link in self.links.keys():
-            create_link_dirs_cmd += "/bin/rm -rf " + self.links[link] + " && "
-            create_link_dirs_cmd += "mkdir -p " + self.links[link] + " && "
-        create_link_dirs_cmd += " true"
-
-        try:
-            os.system(create_link_dirs_cmd)
-        except IOError:
-            log.error("Error running when running the cmd \"%s\"",
-                      create_link_dirs_cmd)
-            sys.exit(1)
+            rm_path(self.links[link])
+            os.makedirs(self.links[link])
 
     def _create_deploy_objects(self):
         '''Create deploy objects from build modes
         '''
         builds = []
-        build_map = {}
         for build in self.build_modes:
             item = CompileOneShot(build, self)
             builds.append(item)
-            build_map[build] = item
 
         self.builds = builds
         self.deploy = builds

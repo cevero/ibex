@@ -1,7 +1,6 @@
 """
 Copyright 2020 Google LLC
 Copyright 2020 PerfectVIPs Inc.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -9,7 +8,6 @@ http://www.apache.org/licenses/LICENSE-2.0
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-
 """
 
 import logging
@@ -92,23 +90,29 @@ class riscv_instr:
         self.has_rd = 1
         self.has_imm = 1
         self.shift_t = vsc.uint32_t(0xffffffff)
+        self.mask = 32
         self.XLEN = vsc.uint32_t(32)  # XLEN is used in constraint throughout the generator.
         # Hence, XLEN should be of PyVSC type in order to use it in a constraint block
         self.XLEN = rcs.XLEN
 
     @vsc.constraint
     def imm_c(self):
-        with vsc.implies(self.instr_name.inside(vsc.rangelist(riscv_instr_name_t.SLLIW,
+        with vsc.if_then(self.instr_name.inside(vsc.rangelist(riscv_instr_name_t.SLLIW,
                                                               riscv_instr_name_t.SRLIW,
                                                               riscv_instr_name_t.SRAIW))):
             self.imm[11:5] == 0
-        with vsc.implies(self.instr_name.inside(vsc.rangelist(riscv_instr_name_t.SLLI,
+        with vsc.if_then(self.instr_name.inside(vsc.rangelist(riscv_instr_name_t.SLLI,
                                                               riscv_instr_name_t.SRLI,
                                                               riscv_instr_name_t.SRAI))):
-            with vsc.implies(self.XLEN == 32):
+            with vsc.if_then(self.XLEN == 32):
                 self.imm[11:5] == 0
-            with vsc.implies(self.XLEN != 32):
+            with vsc.if_then(self.XLEN != 32):
                 self.imm[11:6] == 0
+
+    @vsc.constraint
+    def csr_c(self):
+        # TODO
+        pass
 
     @classmethod
     def register(cls, instr_name, instr_group):
@@ -116,6 +120,21 @@ class riscv_instr:
         cls.instr_registry[instr_name] = instr_group
         return 1
 
+    def __deepcopy__(self, memo):
+        cls = self.__class__  # Extract the class of the object.
+        # Create a new instance of the object based on extracted class.
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if k in ["_ro_int", "tname", "__field_info"]:
+                continue  # Skip the fields which are not required.
+            else:
+                # Copy over attributes by copying directly.
+                setattr(result, k, copy.deepcopy(v, memo))
+        return result
+
+    # Create the list of instructions based on the supported ISA extensions and configuration
+    # of the generator
     @classmethod
     def create_instr_list(cls, cfg):
         cls.instr_names.clear()
@@ -129,6 +148,7 @@ class riscv_instr:
 
             if not instr_inst.is_supported(cfg):
                 continue
+            # C_JAL is RV32C only instruction
             if ((rcs.XLEN != 32) and (instr_name == riscv_instr_name_t.C_JAL)):
                 continue
             if ((riscv_reg_t.SP in cfg.reserved_regs) and
@@ -310,7 +330,7 @@ class riscv_instr:
             if self.imm_type.name == "UIMM":
                 self.imm_len = 5
             else:
-                self.imm_len = 11
+                self.imm_len = 12
         self.imm_mask = (self.imm_mask << self.imm_len) & self.shift_t
 
     def extend_imm(self):
@@ -506,8 +526,8 @@ class riscv_instr:
         self.imm_str = str(self.uintToInt(self.imm))
 
     def uintToInt(self, x):
-        if x < (2 ** rcs.XLEN) / 2:
+        if x < (2 ** self.mask) / 2:
             signed_x = x
         else:
-            signed_x = x - 2 ** rcs.XLEN
+            signed_x = x - 2 ** self.mask
         return signed_x

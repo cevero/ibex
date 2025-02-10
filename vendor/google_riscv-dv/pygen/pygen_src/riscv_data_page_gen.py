@@ -14,15 +14,23 @@ import logging
 import vsc
 import random
 from collections import defaultdict
-from pygen_src.riscv_instr_pkg import pkg_ins, data_pattern_t
 from pygen_src.riscv_instr_gen_config import cfg
+from pygen_src.riscv_instr_pkg import pkg_ins, data_pattern_t
 
+
+# -----------------------------------------------------------------------------------------
+# RISC-V assmebly program data section generator
+# There can be user mode and supervisor(kernel) mode data pages
+# -----------------------------------------------------------------------------------------
 
 @vsc.randobj
 class riscv_data_page_gen:
     def __init__(self):
         self.data_page_str = []
         self.mem_region_setting = defaultdict(list)
+
+    # The data section can be initialized with different data pattern:
+    # - Random value, incremental value, all zeros
     @staticmethod
     def gen_data(idx, pattern, num_of_bytes, data):
         temp_data = 0
@@ -35,12 +43,9 @@ class riscv_data_page_gen:
                 data[i] = (idx + i) % 256
         return data
 
+    # Generate data pages for all memory regions
     def gen_data_page(self, hart_id, pattern, is_kernel=0, amo=0):
-        tmp_str = ""
         temp_data = []
-        tmp_data = []
-        page_cnt = 0
-        page_size = 0
         self.data_page_str.clear()
         if is_kernel:
             self.mem_region_setting = cfg.s_mem_region
@@ -50,29 +55,29 @@ class riscv_data_page_gen:
             self.mem_region_setting = cfg.mem_region
         for i in range(len(self.mem_region_setting)):
             logging.info("Generate data section: {} size:0x{} xwr:0x{}".format(
-                         self.mem_region_setting[i]["name"],
-                         self.mem_region_setting[i]["size_in_bytes"],
-                         self.mem_region_setting[i]["xwr"]))
+                         self.mem_region_setting[i].name,
+                         self.mem_region_setting[i].size_in_bytes,
+                         self.mem_region_setting[i].xwr))
             if amo:
                 if cfg.use_push_data_section:
                     self.data_page_str.append(".pushsection .{},\"aw\",@progbits;"
-                                              .format(self.mem_region_setting[i]["name"]))
+                                              .format(self.mem_region_setting[i].name))
                 else:
                     self.data_page_str.append(".section .{},\"aw\",@progbits;"
-                                              .format(self.mem_region_setting[i]["name"]))
-                self.data_page_str.append("{}:".format(self.mem_region_setting[i]["name"]))
+                                              .format(self.mem_region_setting[i].name))
+                self.data_page_str.append("{}:".format(self.mem_region_setting[i].name))
             else:
                 if cfg.use_push_data_section:
                     self.data_page_str.append(".pushsection .{},\"aw\",@progbits;"
                                               .format(pkg_ins.hart_prefix(hart_id) +
-                                                      self.mem_region_setting[i]["name"]))
+                                                      self.mem_region_setting[i].name))
                 else:
                     self.data_page_str.append(".section .{},\"aw\",@progbits;"
                                               .format(pkg_ins.hart_prefix(hart_id) +
-                                                      self.mem_region_setting[i]["name"]))
+                                                      self.mem_region_setting[i].name))
                 self.data_page_str.append("{}:".format(pkg_ins.hart_prefix(hart_id) +
-                                                       self.mem_region_setting[i]["name"]))
-            page_size = self.mem_region_setting[i]["size_in_bytes"]
+                                                       self.mem_region_setting[i].name))
+            page_size = self.mem_region_setting[i].size_in_bytes
             for i in range(0, page_size, 32):
                 if page_size - 1 >= 32:
                     temp_data = self.gen_data(idx=i, pattern=pattern,

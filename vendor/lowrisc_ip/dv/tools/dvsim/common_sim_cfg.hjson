@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 {
@@ -10,25 +10,26 @@
   import_cfgs:      ["{proj_root}/dv/uvm/common_project_cfg.hjson",
                      "{dv_root}/tools/dvsim/common_modes.hjson",
                      "{dv_root}/tools/dvsim/fusesoc.hjson",
+                     "{dv_root}/tools/dvsim/bazel.hjson",
                      "{dv_root}/tools/dvsim/{tool}.hjson"]
 
   // Default directory structure for the output
   build_dir:          "{scratch_path}/{build_mode}"
   run_dir_name:       "{index}.{test}"
-  run_dir:            "{scratch_path}/{run_dir_name}/out"
-  sw_build_dir:       "{scratch_path}"
+  run_dir:            "{scratch_path}/{run_dir_name}/latest"
   sw_root_dir:        "{proj_root}/sw"
 
-  // pass and fail patterns
-  build_pass_patterns: []
-  build_fail_patterns: ["^ERROR:.*$"] // fusesoc build error
+  // Default file to store build_seed value
+  build_seed_file_path: "{build_dir}/build_seed.log"
+
   run_pass_patterns:   ["^TEST PASSED (UVM_)?CHECKS$"]
   run_fail_patterns:   ["^UVM_ERROR\\s[^:].*$",
                         "^UVM_FATAL\\s[^:].*$",
                         "^UVM_WARNING\\s[^:].*$",
                         "^Assert failed: ",
                         "^\\s*Offending '.*'",
-                        "^TEST FAILED (UVM_)?CHECKS$"]
+                        "^TEST FAILED (UVM_)?CHECKS$",
+                        "^Error:.*$"]  // ISS errors
 
   // Default TileLink widths
   tl_aw: 32
@@ -52,6 +53,8 @@
   // the 'overrides' directive.
   dut_instance: "{tb}.dut"
 
+  timescale: "1ns/1ps"
+
   // Top level simulation entities.
   sim_tops: ["{tb}"]
 
@@ -62,7 +65,9 @@
                "+define+UVM_REGEX_NO_DPI",
                "+define+UVM_REG_ADDR_WIDTH={tl_aw}",
                "+define+UVM_REG_DATA_WIDTH={tl_dw}",
-               "+define+UVM_REG_BYTENABLE_WIDTH={tl_dbw}"]
+               "+define+UVM_REG_BYTENABLE_WIDTH={tl_dbw}",
+               "+define+SIMULATION",
+               "+define+DUT_HIER={dut_instance}"]
 
   run_opts: ["+UVM_NO_RELNOTES",
              "+UVM_VERBOSITY={expand_uvm_verbosity_{verbosity}}"]
@@ -71,6 +76,7 @@
   exports: [
     { dv_root: "{dv_root}" },
     { SIMULATOR: "{tool}" },
+    { GUI: "{gui}"},
     { WAVES: "{waves}" },
     { DUT_TOP: "{dut}" },
     { TB_TOP: "{tb}" },
@@ -94,7 +100,7 @@
   //     }
   //   ]
   //
-  // To use a build mode for a specific test, set the 'use_build_mode' key.
+  // To use a build mode for a specific test, set the 'build_mode' key.
   //
   build_modes: []
 
@@ -110,17 +116,17 @@
       name: smoke
       tests: []
       reseed: 1
+      run_opts: [// Knob used to configure an existing test / vseq to have a shorter runtime.
+                 "+smoke_test=1"
+                ]
     }
-
     {
       name: all
     }
-
     {
       name: all_once
       reseed: 1
     }
-
     {
       name: nightly
       en_sim_modes: ["cov"]
@@ -130,17 +136,21 @@
   // Project defaults for VCS
   vcs_cov_cfg_file: "{{build_mode}_vcs_cov_cfg_file}"
   vcs_unr_cfg_file: "{dv_root}/tools/vcs/unr.cfg"
-  vcs_cov_excl_files: ["{dv_root}/tools/vcs/common_cov_excl.el"]
+  vcs_xprop_cfg_file: "{dv_root}/tools/vcs/xprop.cfg"
+  vcs_fsm_reset_cov_cfg_file: "{dv_root}/tools/vcs/fsm_reset_cov.cfg"
+  vcs_cov_excl_files: []
 
   // Build-specific coverage cfg files for VCS.
-  default_vcs_cov_cfg_file: "-cm_hier {dv_root}/tools/vcs/cover.cfg"
-  cover_reg_top_vcs_cov_cfg_file: "-cm_hier {dv_root}/tools/vcs/cover_reg_top.cfg"
+  default_vcs_cov_cfg_file: "-cm_hier {dv_root}/tools/vcs/cover.cfg+{dv_root}/tools/vcs/common_cov_excl.cfg"
+  cover_reg_top_vcs_cov_cfg_file: "-cm_hier {dv_root}/tools/vcs/cover_reg_top.cfg+{dv_root}/tools/vcs/common_cov_excl.cfg"
 
   // Project defaults for Xcelium
-  // xcelium_cov_cfg_file: "{{build_mode}_xcelium_cov_cfg_file}"
-  // xcelium_cov_refine_files: ["{dv_root}/tools/xcelium/common_cov.vRefine"]
+  xcelium_cov_cfg_file: "{{build_mode}_xcelium_cov_cfg_file}"
+  xcelium_unr_cfg_file:  "{dv_root}/tools/xcelium/unr.cfg"
+  xcelium_cov_excl_script: "{dv_root}/tools/xcelium/common_cov_excl.tcl"
+  xcelium_cov_refine_files: []
 
   // Build-specific coverage cfg files for Xcelium.
-  // default_xcelium_cov_cfg_file: "-covfile {dv_root}/tools/xcelium/cover.ccf"
-  // cover_reg_top_xcelium_cov_cfg_file: "-covfile {dv_root}/tools/xcelium/cover_reg_top.ccf"
+  default_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover.ccf"
+  cover_reg_top_xcelium_cov_cfg_file: "{dv_root}/tools/xcelium/cover_reg_top.ccf"
 }

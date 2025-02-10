@@ -20,7 +20,7 @@
 - iss: ovpsim
   path_var: OVPSIM_PATH
   cmd: >
-    <path_var>/riscvOVPsim.exe
+    <path_var>/riscvOVPsimPlus.exe
     --controlfile <cfg_path>/riscvOVPsim.ic
     --objfilenoentry <elf>
     --override riscvOVPsim/cpu/simulateexceptions=T
@@ -36,3 +36,8 @@
   path_var: WHISPER_ISS
   cmd: >
     <path_var> <elf> --log --xlen <xlen> --isa <variant>
+
+- iss: renode
+  path_var: RENODE_PATH
+  cmd: >
+    python3 <scripts_path>/renode_wrapper.py --renode "<path_var>" --elf <elf> --isa <variant>

@@ -1,9 +1,11 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
 package str_utils_pkg;
   `include "dv_macros.svh"
+
+  string msg_id = "str_utils_pkg";
 
   // Returns 1 if string 's' has substring 'sub' within the given index range. 0 Otherwise.
   function automatic bit str_has_substr(string s, string sub, int range_lo = 0, int range_hi = -1);
@@ -15,6 +17,16 @@ package str_utils_pkg;
     end
     return 0;
   endfunction : str_has_substr
+
+  // Returns 1 when string 's' starts with substring 'sub'.
+  function automatic bit str_starts_with(string s, string sub);
+    return s.substr(0, sub.len() - 1) == sub;
+  endfunction
+
+  // Returns 1 when string 's' ends with substring 'sub'.
+  function automatic bit str_ends_with(string s, string sub);
+    return s.substr(s.len() - sub.len(), s.len() - 1) == sub;
+  endfunction
 
   // Returns the index of first occurrence of string 'sub' within string 's''s given index range.
   // Returns -1 otherwise.
@@ -39,6 +51,22 @@ package str_utils_pkg;
     end
     return -1;
   endfunction : str_rfind
+
+  // Find the first match string 'sub' in 's' and replace it with 'new_sub'.
+  // TODO: Add support for global replacement.
+  function automatic string str_replace(string s, string sub, string new_sub);
+    string str_before_sub, str_after_sub;
+    int lo_idx = str_find(s, sub);
+
+    // check sub string exists
+    `DV_CHECK_NE_FATAL(lo_idx, -1, $sformatf("sub string %s doesn't exist in %s", sub, s), msg_id)
+
+    // the new_str contains 3 portions {str_before_sub, new_sub, str_after_sub}
+    if (lo_idx > 0) str_before_sub = s.substr(0, lo_idx - 1);
+    if (lo_idx + sub.len() < s.len()) str_after_sub = s.substr(lo_idx + sub.len(), s.len() - 1);
+
+    return {str_before_sub, new_sub, str_after_sub};
+  endfunction : str_replace
 
   // Strips a given set of characters in string 's'.
   //
@@ -111,6 +139,31 @@ package str_utils_pkg;
     return str;
   endfunction : str_join
 
+  // Cuts sections (such as comments) from string s starting and ending with provided substrings.
+  //
+  // start_delim: substring representing the start of section to be removed (e.g. "//", "/*").
+  // end_delim: substring representing the end of the section to be removed (e.g. "\n", "*/").
+  // remove_start_delim: include the start_delim substring in the removal.
+  // remove_end_delim: include the end_delim substring in the removal.
+  function automatic string str_remove_sections(string s,
+                                                string start_delim,
+                                                string end_delim,
+                                                bit remove_start_delim = 1,
+                                                bit remove_end_delim = 1);
+      int start_idx, end_idx;
+      start_idx = str_utils_pkg::str_find(s, start_delim);
+      while (start_idx != -1) begin
+        int rm_start_idx, rm_end_idx;
+        rm_start_idx = remove_start_delim ? start_idx : start_idx + start_delim.len() - 1;
+        end_idx = str_utils_pkg::str_find(s, end_delim, .range_lo(start_idx + start_delim.len()));
+        if (end_idx == -1) break;
+        rm_end_idx = remove_end_delim ? end_idx + end_delim.len() - 1 : end_idx - 1;
+        s = str_utils_pkg::str_replace(s, s.substr(rm_start_idx, rm_end_idx), "");
+        start_idx = str_utils_pkg::str_find(s, start_delim, .range_lo(end_idx + end_delim.len()));
+      end
+      return s;
+  endfunction
+
   // Converts a string to an array of bytes.
   function automatic void str_to_bytes(string s, output byte bytes[]);
     bytes = new[s.len()];
@@ -118,6 +171,15 @@ package str_utils_pkg;
       bytes[i] = s.getc(i);
     end
   endfunction : str_to_bytes
+
+  // Converts an array of bytes to a string.
+  function automatic string bytes_to_str(byte bytes[]);
+    string s;
+    foreach (bytes[i]) begin
+      s = {s, string'(bytes[i])};
+    end
+    return s;
+  endfunction
 
   /************************/
   /* File path functions. */

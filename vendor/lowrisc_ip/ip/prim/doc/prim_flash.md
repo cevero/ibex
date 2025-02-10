@@ -1,6 +1,4 @@
----
-title: "Primitive Component: Flash Wrapper"
----
+# Primitive Component: Flash Wrapper
 
 # Overview
 `prim_flash` is a wrapper interface for technology specific flash modules.
@@ -29,7 +27,7 @@ TestModeWidth  | int    | The number of test modes for a bank of flash
 Name                    | In/Out | Description
 ------------------------|--------|---------------------------------
 clk_i                   | input  | Clock input
-rst_n_i                 | input  | Reset input
+rst_ni                  | input  | Reset input
 flash_req_i             | input  | Inputs from flash protocol and physical controllers
 flash_rsp_o             | output | Outputs to flash protocol and physical controllers
 prog_type_avail_o       | output | Available program types in this flash wrapper: Currently there are only two types, program normal and program repair
@@ -41,14 +39,14 @@ tdo_o                   | output | jtag tdo
 bist_enable_i           | input  | lc_ctrl_pkg :: On for bist_enable input
 scanmode_i              | input  | dft scanmode input
 scan_en_i               | input  | dft scan shift input
-scan_rst_n_i            | input  | dft scanmode reset
+scan_rst_ni             | input  | dft scanmode reset
 flash_power_ready_h_i   | input  | flash power is ready (high voltage connection)
 flash_power_down_h_i    | input  | flash wrapper is powering down (high voltage connection)
 flash_test_mode_a_i     | input  | flash test mode values (analog connection)
 flash_test_voltage_h_i  | input  | flash test mode voltage (high voltage connection)
 flash_err_o             | output | flash level error interrupt indication, cleared on write 1 to status register
-flash_alert_po          | output | flash positive detector alert 
-flash_alert_no          | output | flash negative detector alert 
+flash_alert_po          | output | flash positive detector alert
+flash_alert_no          | output | flash negative detector alert
 flash_alert_ack         | input  | single pulse ack
 flash_alert_trig        | input  | alert force trig by SW
 tl_i                    | input  | TL_UL  interface for rd/wr registers access
@@ -69,7 +67,7 @@ part               | input  | requested transaction partition
 info_sel           | input  | if requested transaction is information partition, the type of information partition accessed
 he                 | input  | high endurance enable for requested address
 prog_data          | input  | program data
-ack                | output | transction acknowledge
+ack                | output | transaction acknowledge
 rd_data            | output | transaction read data
 done               | output | transaction done
 
@@ -92,7 +90,7 @@ It is the flash wrapper decision on how many outstanding transaction to accept.
 The following are examples for read, program and erase transactions.
 
 ### Read
-{{< wavejson >}}
+```wavejson
 {signal: [
   {name: 'clk_i',     wave: 'p.................'},
   {name: 'rd_i',      wave: '011..0.1..0.......'},
@@ -101,10 +99,10 @@ The following are examples for read, program and erase transactions.
   {name: 'done_o',    wave: '0....10...10....10'},
   {name: 'rd_data_o', wave: 'x....2x...2x....2x'},
 ]}
-{{< /wavejson >}}
+```
 
 ### Program
-{{< wavejson >}}
+```wavejson
 {signal: [
   {name: 'clk_i',       wave: 'p................'},
   {name: 'prog_i',      wave: '011...0.1....0...'},
@@ -114,21 +112,21 @@ The following are examples for read, program and erase transactions.
   {name: 'ack_o',       wave: '010..10.....10...'},
   {name: 'done_o',      wave: '0..............10'},
 ]}
-{{< /wavejson >}}
+```
 
 ### Erase
-{{< wavejson >}}
+```wavejson
 {signal: [
   {name: 'clk_i',     wave: 'p................'},
   {name: '*_erase_i', wave: '01.0.........1.0.'},
   {name: 'ack_o',     wave: '0.10..........10.'},
   {name: 'done_o',    wave: '0.....10.........'},
 ]}
-{{< /wavejson >}}
+```
 
-## Initlialization
+## Initialization
 
-The flash wrapper may undergo technology specific intializations when it is first powered up.
+The flash wrapper may undergo technology specific initializations when it is first powered up.
 During this state, it asserts the `init_busy` to inform the outside world that it is not ready for transactions.
 During this time, if a transaction is issued towards the flash wrapper, the transaction is not acknowledged until the initialization is complete.
 
@@ -148,11 +146,11 @@ A program type not supported by the wrapper, indicated through `prog_type_avail`
 
 ## Erase Suspend
 Since erase operations can take a significant amount of time, sometimes it is necessary for software or other components to suspend the operation.
-The suspend operation input request starts with `erase_suspend_req` assertion. Flash wrapper circuit acks when wrapper starts suspend. 
+The suspend operation input request starts with `erase_suspend_req` assertion. Flash wrapper circuit acks when wrapper starts suspend.
 When the erase suspend completes, the flash wrapper circuitry also asserts `done` for the ongoing erase transaction to ensure all hardware gracefully completes.
 
 The following is an example diagram
-{{< wavejson >}}
+```wavejson
 {signal: [
   {name: 'clk_i',                wave: 'p................'},
   {name: 'pg_erase_i',           wave: '01.0..............'},
@@ -161,7 +159,7 @@ The following is an example diagram
   {name: 'done_o',               wave: '0............10..'},
  ]
   }
-{{< /wavejson >}}
+```
 
 ## Error Interrupt
 The `flash_err_o` is a level interrupt indication, that is asserted whenever an error event occurs in one of the Flash banks.

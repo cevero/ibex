@@ -5,8 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 RV_ISA = rv32im
+SUPPRESS_PCOUNT_DUMP = 0
 
-OUTFILES = $(OPATH)coremark.dis $(OPATH)coremark.map
+OUTFILES = $(OPATH)coremark.dis $(OPATH)coremark.map $(OPATH)coremark.vmem
 
 NAME                 = coremark
 PORT_CLEAN          := $(OUTFILES)
@@ -35,6 +36,10 @@ PORT_CFLAGS = -g -march=$(RV_ISA) -mabi=ilp32 -static -mcmodel=medlow -mtune=sif
   -nostdlib -nostartfiles -ffreestanding -mstrict-align \
 	-DTOTAL_DATA_SIZE=2000 -DMAIN_HAS_NOARGC=1 \
 	-DPERFORMANCE_RUN=1
+
+ifeq ($(SUPPRESS_PCOUNT_DUMP),1)
+	PORT_CFLAGS += -DSUPPRESS_PCOUNT_DUMP
+endif
 
 FLAGS_STR = "$(PORT_CFLAGS) $(XCFLAGS) $(XLFLAGS) $(LFLAGS_END)"
 CFLAGS += $(PORT_CFLAGS) $(XCFLAGS) -I$(SIMPLE_SYSTEM_COMMON) -I$(PORT_DIR) -I.
@@ -86,6 +91,9 @@ $(OPATH)$(PORT_DIR)/%$(OEXT) : %.s
 
 port_postbuild:
 	riscv32-unknown-elf-objdump -SD $(OPATH)coremark.elf > $(OPATH)coremark.dis
+	riscv32-unknown-elf-objcopy -O binary $(OPATH)coremark.elf $(OPATH)coremark.bin
+	srec_cat $(OPATH)coremark.bin -binary -offset 0x0000 -byte-swap 4 -o  $(OPATH)coremark.vmem -vmem
+
 
 # FLAG : OPATH
 # Path to the output folder. Default - current folder.

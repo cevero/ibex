@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -64,11 +64,11 @@ class ${name}_scoreboard extends dv_base_scoreboard #(
 % endfor
 % if is_cip:
 
-  virtual task process_tl_access(tl_seq_item item, tl_channels_e channel = DataChannel);
+  virtual task process_tl_access(tl_seq_item item, tl_channels_e channel, string ral_name);
     uvm_reg csr;
     bit     do_read_check   = 1'b1;
     bit     write           = item.is_write();
-    uvm_reg_addr_t csr_addr = ral.get_word_aligned_addr(item.a_addr);
+    uvm_reg_addr_t csr_addr = cfg.ral_models[ral_name].get_word_aligned_addr(item.a_addr);
 
     bit addr_phase_read   = (!write && channel == AddrChannel);
     bit addr_phase_write  = (write && channel == AddrChannel);
@@ -76,8 +76,8 @@ class ${name}_scoreboard extends dv_base_scoreboard #(
     bit data_phase_write  = (write && channel == DataChannel);
 
     // if access was to a valid csr, get the csr handle
-    if (csr_addr inside {cfg.csr_addrs}) begin
-      csr = ral.default_map.get_reg_by_offset(csr_addr);
+    if (csr_addr inside {cfg.ral_models[ral_name].csr_addrs}) begin
+      csr = cfg.ral_models[ral_name].default_map.get_reg_by_offset(csr_addr);
       `DV_CHECK_NE_FATAL(csr, null)
     end
     else begin

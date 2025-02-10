@@ -1,5 +1,5 @@
 CAPI=2:
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 name: "lowrisc:dv:${name}_sva:0.1"
@@ -25,7 +25,6 @@ generate:
     generator: csr_assert_gen
     parameters:
       spec: ../../data/${name}.hjson
-      depend: lowrisc:ip:${name}
 % endif
 
 targets:

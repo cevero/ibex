@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -112,7 +112,7 @@ module prim_keccak #(
   endfunction : box_to_bitarray
 
   // Step Mapping =============================================================
-  // theta(θ)
+  // theta
   // XOR each bit in the state with the parity of two columns
   // C[x,z] = A[x,0,z] ^ A[x,1,z] ^ A[x,2,z] ^ A[x,3,z] ^ A[x,4,z]
   // D[x,z] = C[x-1,z] ^ C[x+1,z-1]
@@ -292,4 +292,3 @@ module prim_keccak #(
   //endfunction : keccak_rnd
 
 endmodule
-

@@ -13,33 +13,33 @@
 
 module ibex_multdiv_slow
 (
-    input  logic             clk_i,
-    input  logic             rst_ni,
-    input  logic             mult_en_i,  // dynamic enable signal, for FSM control
-    input  logic             div_en_i,   // dynamic enable signal, for FSM control
-    input  logic             mult_sel_i, // static decoder output, for data muxes
-    input  logic             div_sel_i,  // static decoder output, for data muxes
-    input  ibex_pkg::md_op_e operator_i,
-    input  logic  [1:0]      signed_mode_i,
-    input  logic [31:0]      op_a_i,
-    input  logic [31:0]      op_b_i,
-    input  logic [33:0]      alu_adder_ext_i,
-    input  logic [31:0]      alu_adder_i,
-    input  logic             equal_to_zero_i,
-    input  logic             data_ind_timing_i,
+  input  logic             clk_i,
+  input  logic             rst_ni,
+  input  logic             mult_en_i,  // dynamic enable signal, for FSM control
+  input  logic             div_en_i,   // dynamic enable signal, for FSM control
+  input  logic             mult_sel_i, // static decoder output, for data muxes
+  input  logic             div_sel_i,  // static decoder output, for data muxes
+  input  ibex_pkg::md_op_e operator_i,
+  input  logic  [1:0]      signed_mode_i,
+  input  logic [31:0]      op_a_i,
+  input  logic [31:0]      op_b_i,
+  input  logic [33:0]      alu_adder_ext_i,
+  input  logic [31:0]      alu_adder_i,
+  input  logic             equal_to_zero_i,
+  input  logic             data_ind_timing_i,
 
-    output logic [32:0]      alu_operand_a_o,
-    output logic [32:0]      alu_operand_b_o,
+  output logic [32:0]      alu_operand_a_o,
+  output logic [32:0]      alu_operand_b_o,
 
-    input  logic [33:0]      imd_val_q_i[2],
-    output logic [33:0]      imd_val_d_o[2],
-    output logic  [1:0]      imd_val_we_o,
+  input  logic [33:0]      imd_val_q_i[2],
+  output logic [33:0]      imd_val_d_o[2],
+  output logic  [1:0]      imd_val_we_o,
 
-    input  logic             multdiv_ready_id_i,
+  input  logic             multdiv_ready_id_i,
 
-    output logic [31:0]      multdiv_result_o,
+  output logic [31:0]      multdiv_result_o,
 
-    output logic             valid_o
+  output logic             valid_o
 );
 
   import ibex_pkg::*;
@@ -96,7 +96,7 @@ module ibex_multdiv_slow
   always_comb begin
     alu_operand_a_o = accum_window_q;
 
-    unique case(operator_i)
+    unique case (operator_i)
 
       MD_OP_MULL: begin
         alu_operand_b_o = op_a_bw_pp;
@@ -108,7 +108,7 @@ module ibex_multdiv_slow
 
       MD_OP_DIV,
       MD_OP_REM: begin
-        unique case(md_state_q)
+        unique case (md_state_q)
           MD_IDLE: begin
             // 0 - B = 0 iff B == 0
             alu_operand_a_o = {32'h0  , 1'b1};
@@ -181,15 +181,16 @@ module ibex_multdiv_slow
     multdiv_hold     = 1'b0;
     div_by_zero_d    = div_by_zero_q;
     if (mult_sel_i || div_sel_i) begin
-      unique case(md_state_q)
+      unique case (md_state_q)
         MD_IDLE: begin
-          unique case(operator_i)
+          unique case (operator_i)
             MD_OP_MULL: begin
               op_a_shift_d   = op_a_ext << 1;
               accum_window_d = {       ~(op_a_ext[32]   &     op_b_i[0]),
                                          op_a_ext[31:0] & {32{op_b_i[0]}}  };
               op_b_shift_d   = op_b_ext >> 1;
               // Proceed with multiplication by 0/1 in data-independent time mode
+              // SEC_CM: CORE.DATA_REG_SW.SCA
               md_state_d     = (!data_ind_timing_i && ((op_b_ext >> 1) == 0)) ? MD_LAST : MD_COMP;
             end
             MD_OP_MULH: begin
@@ -205,6 +206,7 @@ module ibex_multdiv_slow
               // Note with data-independent time option, the full divide operation will proceed as
               // normal and will naturally return -1
               accum_window_d = {33{1'b1}};
+              // SEC_CM: CORE.DATA_REG_SW.SCA
               md_state_d     = (!data_ind_timing_i && equal_to_zero_i) ? MD_FINISH : MD_ABS_A;
               // Record that this is a div by zero to stop the sign change at the end of the
               // division (in data_ind_timing mode).
@@ -216,6 +218,7 @@ module ibex_multdiv_slow
               // Note with data-independent time option, the full divide operation will proceed as
               // normal and will naturally return operand a
               accum_window_d = op_a_ext;
+              // SEC_CM: CORE.DATA_REG_SW.SCA
               md_state_d     = (!data_ind_timing_i && equal_to_zero_i) ? MD_FINISH : MD_ABS_A;
             end
             default:;
@@ -233,21 +236,22 @@ module ibex_multdiv_slow
 
         MD_ABS_B: begin
           // remainder
-          accum_window_d = {32'h0,op_numerator_q[31]};
+          accum_window_d = {32'h0, op_numerator_q[31]};
           // B abs value
-          op_b_shift_d   = sign_b ? {1'b0,alu_adder_i} : {1'b0,op_b_i};
+          op_b_shift_d   = sign_b ? {1'b0, alu_adder_i} : {1'b0, op_b_i};
           md_state_d     = MD_COMP;
         end
 
         MD_COMP: begin
           multdiv_count_d = multdiv_count_q - 5'h1;
-          unique case(operator_i)
+          unique case (operator_i)
             MD_OP_MULL: begin
               accum_window_d = res_adder_l;
               op_a_shift_d   = op_a_shift_q << 1;
               op_b_shift_d   = op_b_shift_q >> 1;
               // Multiplication is complete once op_b is zero, unless in data_ind_timing mode where
               // the maximum possible shift-add operations will be completed regardless of op_b
+              // SEC_CM: CORE.DATA_REG_SW.SCA
               md_state_d     = ((!data_ind_timing_i && (op_b_shift_d == 0)) ||
                                 (multdiv_count_q == 5'd1)) ? MD_LAST : MD_COMP;
             end
@@ -268,7 +272,7 @@ module ibex_multdiv_slow
         end
 
         MD_LAST: begin
-          unique case(operator_i)
+          unique case (operator_i)
             MD_OP_MULL: begin
               accum_window_d = res_adder_l;
 
@@ -301,7 +305,7 @@ module ibex_multdiv_slow
 
         MD_CHANGE_SIGN: begin
           md_state_d = MD_FINISH;
-          unique case(operator_i)
+          unique case (operator_i)
             MD_OP_DIV:
               accum_window_d = div_change_sign ? {1'b0,alu_adder_i} : accum_window_q;
             MD_OP_REM:
@@ -322,6 +326,7 @@ module ibex_multdiv_slow
       endcase // md_state_q
     end // (mult_sel_i || div_sel_i)
   end
+
 
   //////////////////////////////////////////
   // Mutliplier / Divider state registers //
@@ -364,6 +369,17 @@ module ibex_multdiv_slow
   `ASSERT(IbexMultDivStateValid, md_state_q inside {
       MD_IDLE, MD_ABS_A, MD_ABS_B, MD_COMP, MD_LAST, MD_CHANGE_SIGN, MD_FINISH
       }, clk_i, !rst_ni)
+
+`ifdef INC_ASSERT
+  logic sva_fsm_idle;
+  logic unused_sva_fsm_idle;
+
+  // This is intended to be accessed via hierarchal references so isn't output from this module nor
+  // used in any logic in this module
+  assign sva_fsm_idle = (md_state_q == MD_IDLE);
+  // Mark the sva_fsm_idle as unused to avoid lint issues
+  assign unused_sva_fsm_idle = sva_fsm_idle;
+`endif
 
 `ifdef FORMAL
   `ifdef YOSYS

@@ -1,5 +1,5 @@
 CAPI=2:
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,10 @@ filesets:
     depend:
       - lowrisc:ip:tlul
       - lowrisc:prim:ram_1p
-      - lowrisc:ip:flash_ctrl_pkg
+      - "fileset_partner  ? (partner:systems:ast_pkg)"
+      - "!fileset_partner ? (lowrisc:systems:ast_pkg)"
+      - lowrisc:ip_interfaces:flash_ctrl_pkg
+      - lowrisc:ip:flash_ctrl_prim_reg_top
     files:
       - rtl/prim_generic_flash_bank.sv
       - rtl/prim_generic_flash.sv
@@ -36,7 +39,6 @@ filesets:
     depend:
       # common waivers
       - lowrisc:lint:common
-      - lowrisc:lint:comportable
 
 targets:
   default:

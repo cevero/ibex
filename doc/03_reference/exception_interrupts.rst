@@ -50,7 +50,8 @@ To enable interrupts, both the global interrupt enable (MIE) bit in the ``mstatu
 For more information, see the :ref:`cs-registers` documentation.
 
 If multiple interrupts are pending, they are handled in the priority order defined by the RISC-V Privileged Specification, version 1.11 (see Machine Interrupt Registers, Section 3.1.9).
-The highest priority is given to the interrupt with the highest ID, except for timer interrupts, which have the lowest priority.
+The fast interrupts have a platform defined priority.
+In Ibex they take priority over all other interrupts and between fast interrupts the highest priority is given to the interrupt with the lowest ID.
 
 The NMI is enabled independent of the values in the ``mstatus`` and ``mie`` CSRs, and it is not visible through the ``mip`` CSR.
 It has interrupt ID 31, i.e., it has the highest priority of all interrupts and the core jumps to the trap-handler base address (in ``mtvec``) plus 0x7C to handle the NMI.
@@ -62,6 +63,32 @@ It is assumed that the interrupt handler signals completion of the handling rout
 
 In Debug Mode, all interrupts including the NMI are ignored independent of ``mstatus``.MIE and the content of the ``mie`` CSR.
 
+.. _internal-interrupts:
+
+Internal Interrupts
+-------------------
+
+Some events produce an 'internal interrupt'.
+An internal interrupt produces an NMI (using the same vector as the external NMI) with ``mcause`` and ``mtval`` being set to indicate the cause of the internal interrupt.
+The external NMI takes priority over all internal interrupts.
+Entering the handler for an internal interrupt automatically clears the internal interrupt.
+Internal interrupts are considered to be non-recoverable in general.
+Specific details of how an internal interrupt relates to the event that triggers it are listed below.
+Given these details it may be possible for software to recover from an internal interrupt under specific circumstances.
+
+The possible ``mcause`` values for an internal interrupt are listed below:
+
++-------------+-------------------------------------------------------------------------------------------------------------+
+| ``mcause``  | Description                                                                                                 |
++-------------+-------------------------------------------------------------------------------------------------------------+
+| 0xFFFFFFE0  | Load integrity error internal interrupt.                                                                    |
+|             | Only generated when SecureIbex == 1.                                                                        |
+|             | ``mtval`` gives the faulting address.                                                                       |
+|             | The interrupt will be taken at most one instruction after the faulting load.                                |
+|             | In particular a load or store immediately after a faulting load may execute before the interrupt is taken.  |
++-------------+-------------------------------------------------------------------------------------------------------------+
+| 0x8000001F  | External NMI                                                                                                |
++-------------+-------------------------------------------------------------------------------------------------------------+
 
 Recoverable Non-Maskable Interrupt
 ----------------------------------
@@ -98,6 +125,9 @@ Ibex can trigger an exception due to the following exception causes:
 
 The illegal instruction exception, instruction access fault, LSU error exceptions and ECALL instruction exceptions cannot be disabled and are always active.
 
+Note that Ibex cannot generated an 'instruction address misaligned' exception as all configurations implement the 'C' extension.
+Under the RISC-V architecture it is simply not possible to branch or otherwise start executing from a PC that isn't 16-bit aligned.
+So with 'C' implemented all possible PCs are appropriately aligned.
 
 Nested Interrupt/Exception Handling
 -----------------------------------
@@ -147,3 +177,19 @@ The purpose of the nonstandard ``mstack`` CSRs in Ibex is only to support recove
 These CSRs are not accessible by software.
 While handling an NMI, all interrupts are ignored independent of ``mstatus``.MIE.
 Nested NMIs are not supported.
+
+.. _double-fault-detect:
+
+Double Fault Detection
+----------------------
+
+Ibex has a mechanism to detect when a double fault has occurred.
+A double fault is defined as a synchronous exception occurring whilst handling a previous synchronous exception.
+The ``cpuctrl`` custom CSR has fields to provide software visibility and access to this mechanism.
+
+When a synchronous exception occurs, Ibex sets ``cpuctrl``.sync_exception_seen.
+Ibex clears ``cpuctrl``.sync_exception_seen when ``mret`` is executed.
+If a synchronous exception occurs whilst ``cpuctrl``.sync_exception_seen is set, a double fault has been detected.
+
+When a double fault is detected, the ``double_fault_seen_o`` output is asserted for one cycle and ``cpuctrl``.double_fault_seen is set.
+Note that writing the ``cpuctrl``.double_fault_seen field has no effect on the ``double_fault_seen_o`` output.

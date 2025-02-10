@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 {
@@ -8,7 +8,7 @@
                      "hw/dv/tools/dvsim/testplans/mem_testplan.hjson",
                      "hw/dv/tools/dvsim/testplans/intr_test_testplan.hjson",
                      "hw/dv/tools/dvsim/testplans/tl_device_access_types_testplan.hjson"]
-  entries: [
+  testpoints: [
     {
       name: smoke
       desc: '''
@@ -20,14 +20,21 @@
             **Checks**:
             - TBD
             '''
-      milestone: V1
+      stage: V1
       tests: ["${name}_smoke"]
     }
     {
       name: feature1
       desc: '''Add more test entries here like above.'''
-      milestone: V1
+      stage: V1
       tests: []
+    }
+  ]
+
+  covergroups: [
+    {
+      name: ${name}_feature_cg
+      desc: '''Describe the functionality covered by this covergroup.'''
     }
   ]
 }

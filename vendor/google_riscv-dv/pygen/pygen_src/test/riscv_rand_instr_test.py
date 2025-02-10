@@ -11,6 +11,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 """
 
 import sys
+import time
 import logging
 sys.path.append("pygen/")
 from pygen_src.test.riscv_instr_base_test import riscv_instr_base_test
@@ -30,13 +31,18 @@ class riscv_rand_instr_test(riscv_instr_base_test):
         gen_config_table()
 
     def apply_directed_instr(self):
+        # Mix below directed instruction streams with the random instructions
         self.asm.add_directed_instr_stream("riscv_load_store_rand_instr_stream", 4)
-        self.asm.add_directed_instr_stream("riscv_loop_instr", 3)
+        # self.asm.add_directed_instr_stream("riscv_loop_instr", 3)
         self.asm.add_directed_instr_stream("riscv_jal_instr", 4)
-        self.asm.add_directed_instr_stream("riscv_hazard_instr_stream", 4)
+        # self.asm.add_directed_instr_stream("riscv_hazard_instr_stream", 4)
         self.asm.add_directed_instr_stream("riscv_load_store_hazard_instr_stream", 4)
-        self.asm.add_directed_instr_stream("riscv_multi_page_load_store_instr_stream", 4)
-        self.asm.add_directed_instr_stream("riscv_mem_region_stress_test", 4)
+        # self.asm.add_directed_instr_stream("riscv_multi_page_load_store_instr_stream", 4)
+        # self.asm.add_directed_instr_stream("riscv_mem_region_stress_test", 4)
 
 
+start_time = time.time()
 riscv_rand_test_ins = riscv_rand_instr_test()
+riscv_rand_test_ins.run()
+end_time = time.time()
+logging.info("Total execution time: {}s".format(round(end_time - start_time)))

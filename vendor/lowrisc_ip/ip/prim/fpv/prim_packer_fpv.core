@@ -1,5 +1,5 @@
 CAPI=2:
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,8 +10,7 @@ filesets:
     depend:
       - lowrisc:prim:all
     files:
-      - ../rtl/prim_packer.sv
-      - tb/prim_packer_fpv.sv
+      - tb/prim_packer_tb.sv
     file_type: systemVerilogSource
 
 targets:
@@ -21,7 +20,7 @@ targets:
     default_tool: icarus
     filesets:
       - files_formal
-    toplevel: prim_packer_fpv
+    toplevel: prim_packer_tb
 
   formal:
     <<: *default_target

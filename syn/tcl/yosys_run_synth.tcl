@@ -14,29 +14,29 @@ if { $lr_synth_timing_run } {
   write_sdc_out $lr_synth_sdc_file_in $lr_synth_sdc_file_out
 }
 
-yosys "read_verilog -sv ./rtl/prim_clock_gating.v $lr_synth_out_dir/generated/*.v"
+yosys "read_verilog -defer -sv ./rtl/prim_clock_gating.v $lr_synth_out_dir/generated/*.v"
 
 if { $lr_synth_ibex_branch_target_alu } {
-  yosys "chparam -set BranchTargetALU 1 ibex_core"
+  yosys "chparam -set BranchTargetALU 1 $lr_synth_top_module"
 }
 
 if { $lr_synth_ibex_writeback_stage } {
-  yosys "chparam -set WritebackStage 1 ibex_core"
+  yosys "chparam -set WritebackStage 1 $lr_synth_top_module"
 }
 
-yosys "chparam -set RV32B $lr_synth_ibex_bitmanip ibex_core"
+yosys "chparam -set RV32B $lr_synth_ibex_bitmanip $lr_synth_top_module"
 
-yosys "chparam -set RV32M $lr_synth_ibex_multiplier ibex_core"
+yosys "chparam -set RV32M $lr_synth_ibex_multiplier $lr_synth_top_module"
 
-yosys "chparam -set RegFile $lr_synth_ibex_regfile ibex_core"
+yosys "chparam -set RegFile $lr_synth_ibex_regfile $lr_synth_top_module"
 
 yosys "synth $flatten_opt -top $lr_synth_top_module"
 yosys "opt -purge"
 
+yosys "write_verilog $lr_synth_pre_map_out"
+
 # Map latch primitives onto latch cells
 yosys "techmap -map rtl/latch_map.v"
-
-yosys "write_verilog $lr_synth_pre_map_out"
 
 yosys "dfflibmap -liberty $lr_synth_cell_library_path"
 yosys "opt"

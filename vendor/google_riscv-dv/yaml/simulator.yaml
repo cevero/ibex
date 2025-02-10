@@ -22,6 +22,7 @@
       - "vcs -file <cwd>/vcs.compile.option.f
               +incdir+<setting>
               +incdir+<user_extension>
+             +vcs+lic+wait
              -f <cwd>/files.f -full64
              -l <out>/compile.log
              -LDFLAGS '-Wl,--no-as-needed'
@@ -53,11 +54,10 @@
 - tool: questa
   compile:
     cmd:
-      - "vmap mtiUvm $QUESTA_HOME/questasim/uvm-1.2"
+      - "vmap mtiUvm $QUESTA_HOME/uvm-1.2"
       - "vlog -64
         +incdir+<setting>
         +incdir+<user_extension>
-        -access=rwc
         -f <cwd>/files.f
         -sv
         -mfcu -cuname design_cuname
@@ -136,10 +136,19 @@
               -uvmhome CDNS-1.2
               -elaborate
               -l <out>/compile.log <cmp_opts>
+              <cov_opts>
               -xmlibdirpath <out>"
+    cov_opts: >
+      -coverage all
+      -nowarn COVDEF
   sim:
     cmd: >
-      xrun -R -xmlibdirpath <out> <sim_opts> -svseed <seed> -svrnc rand_struct -nokey
+      xrun -R -xmlibdirpath <out> <sim_opts> <cov_opts> -svseed <seed> -svrnc rand_struct -nokey
+    cov_opts: >
+          -covmodeldir <out>/default/<test_id>.<seed>
+          -covworkdir <out>
+          -covscope default
+          -covtest <test_id>.<seed>
 
 - tool: pyflow
   sim:

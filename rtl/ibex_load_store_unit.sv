@@ -14,61 +14,65 @@
 `include "prim_assert.sv"
 `include "dv_fcov_macros.svh"
 
-module ibex_load_store_unit
-(
-    input  logic         clk_i,
-    input  logic         rst_ni,
+module ibex_load_store_unit #(
+  parameter bit          MemECC       = 1'b0,
+  parameter int unsigned MemDataWidth = MemECC ? 32 + 7 : 32
+) (
+  input  logic         clk_i,
+  input  logic         rst_ni,
 
-    // data interface
-    output logic         data_req_o,
-    input  logic         data_gnt_i,
-    input  logic         data_rvalid_i,
-    input  logic         data_err_i,
-    input  logic         data_pmp_err_i,
+  // data interface
+  output logic         data_req_o,
+  input  logic         data_gnt_i,
+  input  logic         data_rvalid_i,
+  input  logic         data_bus_err_i,
+  input  logic         data_pmp_err_i,
 
-    output logic [31:0]  data_addr_o,
-    output logic         data_we_o,
-    output logic [3:0]   data_be_o,
-    output logic [31:0]  data_wdata_o,
-    input  logic [31:0]  data_rdata_i,
+  output logic [31:0]             data_addr_o,
+  output logic                    data_we_o,
+  output logic [3:0]              data_be_o,
+  output logic [MemDataWidth-1:0] data_wdata_o,
+  input  logic [MemDataWidth-1:0] data_rdata_i,
 
-    // signals to/from ID/EX stage
-    input  logic         lsu_we_i,             // write enable                     -> from ID/EX
-    input  logic [1:0]   lsu_type_i,           // data type: word, half word, byte -> from ID/EX
-    input  logic [31:0]  lsu_wdata_i,          // data to write to memory          -> from ID/EX
-    input  logic         lsu_sign_ext_i,       // sign extension                   -> from ID/EX
+  // signals to/from ID/EX stage
+  input  logic         lsu_we_i,             // write enable                     -> from ID/EX
+  input  logic [1:0]   lsu_type_i,           // data type: word, half word, byte -> from ID/EX
+  input  logic [31:0]  lsu_wdata_i,          // data to write to memory          -> from ID/EX
+  input  logic         lsu_sign_ext_i,       // sign extension                   -> from ID/EX
 
-    output logic [31:0]  lsu_rdata_o,          // requested data                   -> to ID/EX
-    output logic         lsu_rdata_valid_o,
-    input  logic         lsu_req_i,            // data request                     -> from ID/EX
+  output logic [31:0]  lsu_rdata_o,          // requested data                   -> to ID/EX
+  output logic         lsu_rdata_valid_o,
+  input  logic         lsu_req_i,            // data request                     -> from ID/EX
 
-    input  logic [31:0]  adder_result_ex_i,    // address computed in ALU          -> from ID/EX
+  input  logic [31:0]  adder_result_ex_i,    // address computed in ALU          -> from ID/EX
 
-    output logic         addr_incr_req_o,      // request address increment for
-                                               // misaligned accesses              -> to ID/EX
-    output logic [31:0]  addr_last_o,          // address of last transaction      -> to controller
-                                               // -> mtval
-                                               // -> AGU for misaligned accesses
+  output logic         addr_incr_req_o,      // request address increment for
+                                              // misaligned accesses              -> to ID/EX
+  output logic [31:0]  addr_last_o,          // address of last transaction      -> to controller
+                                              // -> mtval
+                                              // -> AGU for misaligned accesses
 
-    output logic         lsu_req_done_o,       // Signals that data request is complete
-                                               // (only need to await final data
-                                               // response)                        -> to ID/EX
+  output logic         lsu_req_done_o,       // Signals that data request is complete
+                                              // (only need to await final data
+                                              // response)                        -> to ID/EX
 
-    output logic         lsu_resp_valid_o,     // LSU has response from transaction -> to ID/EX
+  output logic         lsu_resp_valid_o,     // LSU has response from transaction -> to ID/EX
 
-    // exception signals
-    output logic         load_err_o,
-    output logic         store_err_o,
+  // exception signals
+  output logic         load_err_o,
+  output logic         load_resp_intg_err_o,
+  output logic         store_err_o,
+  output logic         store_resp_intg_err_o,
 
-    output logic         busy_o,
+  output logic         busy_o,
 
-    output logic         perf_load_o,
-    output logic         perf_store_o
+  output logic         perf_load_o,
+  output logic         perf_store_o
 );
 
   logic [31:0]  data_addr;
   logic [31:0]  data_addr_w_aligned;
-  logic [31:0]  addr_last_q;
+  logic [31:0]  addr_last_q, addr_last_d;
 
   logic         addr_update;
   logic         ctrl_update;
@@ -95,7 +99,7 @@ module ibex_load_store_unit
                                                           // part of a misaligned access
   logic         pmp_err_q, pmp_err_d;
   logic         lsu_err_q, lsu_err_d;
-  logic         data_or_pmp_err;
+  logic         data_intg_err, data_or_pmp_err;
 
   typedef enum logic [2:0]  {
     IDLE, WAIT_GNT_MIS, WAIT_RVALID_MIS, WAIT_GNT,
@@ -206,13 +210,17 @@ module ibex_load_store_unit
     end
   end
 
-  // Store last address for mtval + AGU for misaligned transactions.
-  // Do not update in case of errors, mtval needs the (first) failing address
+  // Store last address for mtval + AGU for misaligned transactions.  Do not update in case of
+  // errors, mtval needs the (first) failing address.  Where an aligned access or the first half of
+  // a misaligned access sees an error provide the calculated access address. For the second half of
+  // a misaligned access provide the word aligned address of the second half.
+  assign addr_last_d = addr_incr_req_o ? data_addr_w_aligned : data_addr;
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       addr_last_q <= '0;
     end else if (addr_update) begin
-      addr_last_q <= data_addr;
+      addr_last_q <= addr_last_d;
     end
   end
 
@@ -319,6 +327,33 @@ module ibex_load_store_unit
     endcase // case (data_type_q)
   end
 
+  ///////////////////////////////
+  // Read data integrity check //
+  ///////////////////////////////
+
+  // SEC_CM: BUS.INTEGRITY
+  if (MemECC) begin : g_mem_rdata_ecc
+    logic [1:0] ecc_err;
+    logic [MemDataWidth-1:0] data_rdata_buf;
+
+    prim_buf #(.Width(MemDataWidth)) u_prim_buf_instr_rdata (
+      .in_i (data_rdata_i),
+      .out_o(data_rdata_buf)
+    );
+
+    prim_secded_inv_39_32_dec u_data_intg_dec (
+      .data_i     (data_rdata_buf),
+      .data_o     (),
+      .syndrome_o (),
+      .err_o      (ecc_err)
+    );
+
+    // Don't care if error is correctable or not, they're all treated the same
+    assign data_intg_err = |ecc_err;
+  end else begin : g_no_mem_data_ecc
+    assign data_intg_err = 1'b0;
+  end
+
   /////////////
   // LSU FSM //
   /////////////
@@ -392,13 +427,13 @@ module ibex_load_store_unit
           // Update the PMP error for the second part
           pmp_err_d = data_pmp_err_i;
           // Record the error status of the first part
-          lsu_err_d = data_err_i | pmp_err_q;
+          lsu_err_d = data_bus_err_i | pmp_err_q;
           // Capture the first rdata for loads
           rdata_update = ~data_we_q;
           // If already granted, wait for second rvalid
           ls_fsm_ns = data_gnt_i ? IDLE : WAIT_GNT;
           // Update the address for the second part, if no error
-          addr_update = data_gnt_i & ~(data_err_i | pmp_err_q);
+          addr_update = data_gnt_i & ~(data_bus_err_i | pmp_err_q);
           // clear handle_misaligned if second request is granted
           handle_misaligned_d = ~data_gnt_i;
         end else begin
@@ -433,9 +468,9 @@ module ibex_load_store_unit
           // Update the pmp error for the second part
           pmp_err_d = data_pmp_err_i;
           // The first part cannot see a PMP error in this state
-          lsu_err_d = data_err_i;
+          lsu_err_d = data_bus_err_i;
           // Now we can update the address for the second part if no error
-          addr_update = ~data_err_i;
+          addr_update = ~data_bus_err_i;
           // Capture the first rdata for loads
           rdata_update = ~data_we_q;
           // Wait for second rvalid
@@ -470,9 +505,10 @@ module ibex_load_store_unit
   // Outputs //
   /////////////
 
-  assign data_or_pmp_err    = lsu_err_q | data_err_i | pmp_err_q;
+  assign data_or_pmp_err    = lsu_err_q | data_bus_err_i | pmp_err_q;
   assign lsu_resp_valid_o   = (data_rvalid_i | pmp_err_q) & (ls_fsm_cs == IDLE);
-  assign lsu_rdata_valid_o  = (ls_fsm_cs == IDLE) & data_rvalid_i & ~data_or_pmp_err & ~data_we_q;
+  assign lsu_rdata_valid_o  =
+    (ls_fsm_cs == IDLE) & data_rvalid_i & ~data_or_pmp_err & ~data_we_q & ~data_intg_err;
 
   // output to register file
   assign lsu_rdata_o = data_rdata_ext;
@@ -482,24 +518,89 @@ module ibex_load_store_unit
 
   // output to data interface
   assign data_addr_o   = data_addr_w_aligned;
-  assign data_wdata_o  = data_wdata;
   assign data_we_o     = lsu_we_i;
   assign data_be_o     = data_be;
+
+  /////////////////////////////////////
+  // Write data integrity generation //
+  /////////////////////////////////////
+
+  // SEC_CM: BUS.INTEGRITY
+  if (MemECC) begin : g_mem_wdata_ecc
+    prim_secded_inv_39_32_enc u_data_gen (
+      .data_i (data_wdata),
+      .data_o (data_wdata_o)
+    );
+  end else begin : g_no_mem_wdata_ecc
+    assign data_wdata_o = data_wdata;
+  end
 
   // output to ID stage: mtval + AGU for misaligned transactions
   assign addr_last_o   = addr_last_q;
 
   // Signal a load or store error depending on the transaction type outstanding
-  assign load_err_o    = data_or_pmp_err & ~data_we_q & lsu_resp_valid_o;
-  assign store_err_o   = data_or_pmp_err &  data_we_q & lsu_resp_valid_o;
+  assign load_err_o      = data_or_pmp_err & ~data_we_q & lsu_resp_valid_o;
+  assign store_err_o     = data_or_pmp_err &  data_we_q & lsu_resp_valid_o;
+  // Integrity errors are their own category for timing reasons. load_err_o is factored directly
+  // into data_req_o to enable synchronous exception on load errors without performance loss (An
+  // upcoming load cannot request until the current load has seen its response, so the earliest
+  // point the new request can be sent is the same cycle the response is seen). If load_err_o isn't
+  // factored into data_req_o there would have to be a stall cycle between all back to back loads.
+  // The data_intg_err signal is generated combinatorially from the incoming data_rdata_i. Were it
+  // to be factored into load_err_o there would be a feedthrough path from data_rdata_i to
+  // data_req_o which is undesirable.
+  assign load_resp_intg_err_o  = data_intg_err & data_rvalid_i & ~data_we_q;
+  assign store_resp_intg_err_o = data_intg_err & data_rvalid_i & data_we_q;
 
   assign busy_o = (ls_fsm_cs != IDLE);
 
   //////////
   // FCOV //
   //////////
-  `FCOV_SIGNAL(logic, ls_error_exception, (load_err_o | store_err_o) & ~pmp_err_q);
-  `FCOV_SIGNAL(logic, ls_pmp_exception, (load_err_o | store_err_o) & pmp_err_q);
+`ifndef DV_FCOV_DISABLE
+  // Set when awaiting the response for the second half of a misaligned access
+  logic fcov_mis_2_en_d, fcov_mis_2_en_q;
+
+  // fcov_mis_rvalid_1: Set when the response is received to the first half of a misaligned access,
+  // fcov_mis_rvalid_2: Set when response is received for the second half
+  logic fcov_mis_rvalid_1, fcov_mis_rvalid_2;
+
+  // Set when the first half of a misaligned access saw a bus errror
+  logic fcov_mis_bus_err_1_d, fcov_mis_bus_err_1_q;
+
+  assign fcov_mis_rvalid_1 = ls_fsm_cs inside {WAIT_RVALID_MIS, WAIT_RVALID_MIS_GNTS_DONE} &&
+                                data_rvalid_i;
+
+  assign fcov_mis_rvalid_2 = ls_fsm_cs inside {IDLE} && fcov_mis_2_en_q && data_rvalid_i;
+
+  assign fcov_mis_2_en_d = fcov_mis_rvalid_2 ? 1'b0            :  // clr
+                           fcov_mis_rvalid_1 ? 1'b1            :  // set
+                                               fcov_mis_2_en_q ;
+
+  assign fcov_mis_bus_err_1_d = fcov_mis_rvalid_2                   ? 1'b0                 : // clr
+                                fcov_mis_rvalid_1 && data_bus_err_i ? 1'b1                 : // set
+                                                                      fcov_mis_bus_err_1_q ;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      fcov_mis_2_en_q <= 1'b0;
+      fcov_mis_bus_err_1_q <= 1'b0;
+    end else begin
+      fcov_mis_2_en_q <= fcov_mis_2_en_d;
+      fcov_mis_bus_err_1_q <= fcov_mis_bus_err_1_d;
+    end
+  end
+`endif
+
+  `DV_FCOV_SIGNAL(logic, ls_error_exception, (load_err_o | store_err_o) & ~pmp_err_q)
+  `DV_FCOV_SIGNAL(logic, ls_pmp_exception, (load_err_o | store_err_o) & pmp_err_q)
+  `DV_FCOV_SIGNAL(logic, ls_first_req, lsu_req_i & (ls_fsm_cs == IDLE))
+  `DV_FCOV_SIGNAL(logic, ls_second_req,
+    (ls_fsm_cs inside {WAIT_RVALID_MIS}) & data_req_o & addr_incr_req_o)
+  `DV_FCOV_SIGNAL(logic, ls_mis_pmp_err_1,
+    (ls_fsm_cs inside {WAIT_RVALID_MIS, WAIT_GNT_MIS}) && pmp_err_q)
+  `DV_FCOV_SIGNAL(logic, ls_mis_pmp_err_2,
+    (ls_fsm_cs inside {WAIT_RVALID_MIS, WAIT_RVALID_MIS_GNTS_DONE}) && data_pmp_err_i)
 
   ////////////////
   // Assertions //

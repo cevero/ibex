@@ -1,4 +1,4 @@
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 """Generate SystemVerilog UVM agent extended freom our DV lib
@@ -12,9 +12,10 @@ from pkg_resources import resource_filename
 from uvmdvgen import VENDOR_DEFAULT
 
 
-def gen_env(name, is_cip, has_ral, has_interrupts, has_alerts, has_edn,
+def gen_env(name, is_cip, has_ral, has_interrupts, has_alerts, num_edn,
             env_agents, root_dir, vendor):
     # yapf: disable
+    # flake8: noqa
     # 4-tuple - sub-path, ip name, class name, file ext
     env_srcs = [('dv/env',          name + '_', 'env_cfg',            '.sv'),
                 ('dv/env',          name + '_', 'env_cov',            '.sv'),
@@ -35,7 +36,7 @@ def gen_env(name, is_cip, has_ral, has_interrupts, has_alerts, has_edn,
                 ('dv/tests',        name + '_', 'test',               '.core'),
                 ('dv/cov',          '',         '',                   ''),
                 ('dv',              name + '_', 'sim_cfg',            '.hjson'),
-                ('doc/dv_plan',     '',         'index',              '.md'),
+                ('doc/dv',          '',         'index',              '.md'),
                 ('doc',             '',         'checklist',          '.md'),
                 ('data',            name + '_', 'testplan',           '.hjson'),
                 ('dv',              name + '_', 'sim',                '.core')]
@@ -79,7 +80,7 @@ def gen_env(name, is_cip, has_ral, has_interrupts, has_alerts, has_edn,
                                has_ral=has_ral,
                                has_interrupts=has_interrupts,
                                has_alerts=has_alerts,
-                               has_edn=has_edn,
+                               num_edn=num_edn,
                                env_agents=env_agents,
                                vendor=vendor))
             except Exception as e:

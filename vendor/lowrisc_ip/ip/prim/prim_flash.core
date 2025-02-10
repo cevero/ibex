@@ -1,5 +1,5 @@
 CAPI=2:
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -13,14 +13,14 @@ filesets:
       # TODO olofk/fusesoc#404: The below dependency is already added to prim_generic_flash.core.
       # However, the generator for the prim:ram1p does not kick in, causing compile errors.
       - lowrisc:prim:ram_1p
+      - lowrisc:prim:clock_inv
+      - lowrisc:prim:clock_gating
 
 
   files_verilator_waiver:
     depend:
       # common waivers
       - lowrisc:lint:common
-    files:
-    file_type: vlt
 
   files_ascentlint_waiver:
     depend:
@@ -34,7 +34,6 @@ filesets:
     depend:
       # common waivers
       - lowrisc:lint:common
-      - lowrisc:lint:comportable
 
 generate:
   impl:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright lowRISC contributors.
+# Copyright lowRISC contributors (OpenTitan project).
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 """dvsim is a command line tool to deploy ASIC tool flows such as regressions
@@ -23,22 +23,25 @@ import argparse
 import datetime
 import logging as log
 import os
-import shutil
+import random
 import shlex
 import subprocess
 import sys
 import textwrap
-from signal import SIGINT, signal
+from pathlib import Path
 
-import Deploy
-import utils
+import Launcher
+import LauncherFactory
+import LocalLauncher
+import SgeLauncher
 from CfgFactory import make_cfg
+from Deploy import RunTest
+from Timer import Timer
+from utils import (TS_FORMAT, TS_FORMAT_LONG, VERBOSE, rm_path,
+                   run_cmd_with_timeout)
 
 # TODO: add dvsim_cfg.hjson to retrieve this info
 version = 0.1
-
-# By default, all build and run artifacts go here.
-DEFAULT_SCRATCH_ROOT = os.getcwd() + "/scratch"
 
 # The different categories that can be passed to the --list argument.
 _LIST_CATEGORIES = ["build_modes", "run_modes", "tests", "regressions"]
@@ -47,25 +50,25 @@ _LIST_CATEGORIES = ["build_modes", "run_modes", "tests", "regressions"]
 # Function to resolve the scratch root directory among the available options:
 # If set on the command line, then use that as a preference.
 # Else, check if $SCRATCH_ROOT env variable exists and is a directory.
-# Else use the default (<cwd>/scratch)
+# Else use the default (<proj_root>/scratch)
 # Try to create the directory if it does not already exist.
-def resolve_scratch_root(arg_scratch_root):
+def resolve_scratch_root(arg_scratch_root, proj_root):
+    default_scratch_root = proj_root + "/scratch"
     scratch_root = os.environ.get('SCRATCH_ROOT')
     if not arg_scratch_root:
         if scratch_root is None:
-            arg_scratch_root = DEFAULT_SCRATCH_ROOT
+            arg_scratch_root = default_scratch_root
         else:
             # Scratch space could be mounted in a filesystem (such as NFS) on a network drive.
             # If the network is down, it could cause the access access check to hang. So run a
             # simple ls command with a timeout to prevent the hang.
-            (out,
-             status) = utils.run_cmd_with_timeout(cmd="ls -d " + scratch_root,
-                                                  timeout=1,
-                                                  exit_on_failure=0)
+            (out, status) = run_cmd_with_timeout(cmd="ls -d " + scratch_root,
+                                                 timeout=1,
+                                                 exit_on_failure=0)
             if status == 0 and out != "":
                 arg_scratch_root = scratch_root
             else:
-                arg_scratch_root = DEFAULT_SCRATCH_ROOT
+                arg_scratch_root = default_scratch_root
                 log.warning(
                     "Env variable $SCRATCH_ROOT=\"{}\" is not accessible.\n"
                     "Using \"{}\" instead.".format(scratch_root,
@@ -74,13 +77,17 @@ def resolve_scratch_root(arg_scratch_root):
         arg_scratch_root = os.path.realpath(arg_scratch_root)
 
     try:
-        os.system("mkdir -p " + arg_scratch_root)
-    except OSError:
-        log.fatal(
-            "Invalid --scratch-root=\"%s\" switch - failed to create directory!",
-            arg_scratch_root)
+        os.makedirs(arg_scratch_root, exist_ok=True)
+    except PermissionError as e:
+        log.fatal("Failed to create scratch root {}:\n{}.".format(
+            arg_scratch_root, e))
         sys.exit(1)
-    return (arg_scratch_root)
+
+    if not os.access(arg_scratch_root, os.W_OK):
+        log.fatal("Scratch root {} is not writable!".format(arg_scratch_root))
+        sys.exit(1)
+
+    return arg_scratch_root
 
 
 def read_max_parallel(arg):
@@ -122,14 +129,16 @@ def resolve_branch(branch):
     argument is the branch name to use. Otherwise it is None and we use git to
     find the name of the current branch in the working directory.
 
+    Note, as this name will be used to generate output files any forward slashes
+    are replaced with single dashes to avoid being interpreted as directory hierarchy.
     '''
 
     if branch is not None:
-        return branch
+        return branch.replace("/", "-")
 
     result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
                             stdout=subprocess.PIPE)
-    branch = result.stdout.decode("utf-8").strip()
+    branch = result.stdout.decode("utf-8").strip().replace("/", "-")
     if not branch:
         log.warning("Failed to find current git branch. "
                     "Setting it to \"default\"")
@@ -152,19 +161,20 @@ def get_proj_root():
             "But this command has failed:\n"
             "{}".format(' '.join(cmd), result.stderr.decode("utf-8")))
         sys.exit(1)
-    return (proj_root)
+    return proj_root
 
 
 def resolve_proj_root(args):
     '''Update proj_root based on how DVSim is invoked.
 
-    If --remote env var is set, a location in the scratch area is chosen as the
+    If --remote switch is set, a location in the scratch area is chosen as the
     new proj_root. The entire repo is copied over to this location. Else, the
     proj_root is discovered using get_proj_root() method, unless the user
     overrides it on the command line.
 
     This function returns the updated proj_root src and destination path. If
-    --remote env var is not set, the destination path is identical to the src path.
+    --remote switch is not set, the destination path is identical to the src
+    path. Likewise, if --dry-run is set.
     '''
     proj_root_src = args.proj_root or get_proj_root()
 
@@ -172,27 +182,19 @@ def resolve_proj_root(args):
     # then the repo needs to be copied over to the scratch area
     # accessible to those machines.
     # If --purge arg is set, then purge the repo_top that was copied before.
-    if args.remote:
+    if args.remote and not args.dry_run:
         proj_root_dest = os.path.join(args.scratch_root, args.branch,
                                       "repo_top")
         if args.purge:
-            shutil.rmtree(proj_root_dest, ignore_errors=True)
-        copy_repo(proj_root_src, proj_root_dest, args.dry_run)
+            rm_path(proj_root_dest)
+        copy_repo(proj_root_src, proj_root_dest)
     else:
         proj_root_dest = proj_root_src
 
     return proj_root_src, proj_root_dest
 
 
-def sigint_handler(signal_received, frame):
-    # Kill processes and background jobs.
-    log.debug('SIGINT or CTRL-C detected. Exiting gracefully')
-    cfg.kill()
-    log.info('Exit due to SIGINT or CTRL-C ')
-    exit(1)
-
-
-def copy_repo(src, dest, dry_run):
+def copy_repo(src, dest):
     '''Copy over the repo to a new location.
 
     The repo is copied over from src to dest area. It tentatively uses the
@@ -200,17 +202,19 @@ def copy_repo(src, dest, dry_run):
     exclude patterns to skip certain things from being copied over. With GitHub
     repos, an existing `.gitignore` serves this purpose pretty well.
     '''
-    rsync_cmd = ["rsync",
-                 "--recursive", "--links", "--checksum", "--update",
-                 "--inplace", "--no-group"]
+    rsync_cmd = [
+        "rsync", "--recursive", "--links", "--checksum", "--update",
+        "--inplace", "--no-group"
+    ]
 
     # Supply `.gitignore` from the src area to skip temp files.
     ignore_patterns_file = os.path.join(src, ".gitignore")
     if os.path.exists(ignore_patterns_file):
         # TODO: hack - include hw/foundry since it is excluded in .gitignore.
-        rsync_cmd += ["--include=hw/foundry",
-                      "--exclude-from={}".format(ignore_patterns_file),
-                      "--exclude=.*"]
+        rsync_cmd += [
+            "--include=hw/foundry",
+            "--exclude-from={}".format(ignore_patterns_file), "--exclude=.*"
+        ]
 
     rsync_cmd += [src + "/.", dest]
     rsync_str = ' '.join([shlex.quote(w) for w in rsync_cmd])
@@ -218,18 +222,18 @@ def copy_repo(src, dest, dry_run):
     cmd = ["flock", "--timeout", "600", dest, "--command", rsync_str]
 
     log.info("[copy_repo] [dest]: %s", dest)
-    log.log(utils.VERBOSE, "[copy_repo] [cmd]: \n%s", ' '.join(cmd))
-    if not dry_run:
-        # Make sure the dest exists first.
-        os.makedirs(dest, exist_ok=True)
-        try:
-            subprocess.run(cmd,
-                           check=True,
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError as e:
-            log.error("Failed to copy over %s to %s: %s", src, dest,
-                      e.stderr.decode("utf-8").strip())
+    log.log(VERBOSE, "[copy_repo] [cmd]: \n%s", ' '.join(cmd))
+
+    # Make sure the dest exists first.
+    os.makedirs(dest, exist_ok=True)
+    try:
+        subprocess.run(cmd,
+                       check=True,
+                       stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        log.error("Failed to copy over %s to %s: %s", src, dest,
+                  e.stderr.decode("utf-8").strip())
     log.info("Done.")
 
 
@@ -251,13 +255,34 @@ def wrapped_docstring():
     return '\n\n'.join(textwrap.fill(p) for p in paras)
 
 
+def parse_reseed_multiplier(as_str: str) -> float:
+    '''Parse the argument for --reseed-multiplier'''
+    try:
+        ret = float(as_str)
+    except ValueError:
+        raise argparse.ArgumentTypeError('Invalid reseed multiplier: {!r}. '
+                                         'Must be a float.'.format(as_str))
+    if ret <= 0:
+        raise argparse.ArgumentTypeError('Reseed multiplier must be positive.')
+    return ret
+
+
 def parse_args():
+    cfg_metavar = "<cfg-hjson-file>"
     parser = argparse.ArgumentParser(
         description=wrapped_docstring(),
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        # #12377 [dvsim] prints invalid usage when constructed by argparse
+        # Disable it pending more verbose and automatic solution and document in
+        # help message
+        usage='%(prog)s {} [-h] [options]'.format(cfg_metavar),
+        epilog="Either place the positional argument ahead of the optional args:\n" \
+               "eg. `dvsim.py {} -i ITEM ITEM` \n" \
+               "or end a sequence of optional args with `--`:\n" \
+               "eg. `dvsim.py -i ITEM ITEM -- {}`\n".format(cfg_metavar, cfg_metavar))
 
     parser.add_argument("cfg",
-                        metavar="<cfg-hjson-file>",
+                        metavar=cfg_metavar,
                         help="""Configuration hjson file.""")
 
     parser.add_argument("--version",
@@ -270,15 +295,16 @@ def parse_args():
         help=("Explicitly set the tool to use. This is "
               "optional for running simulations (where it can "
               "be set in an .hjson file), but is required for "
-              "other flows. Possible tools include: vcs, "
-              "xcelium, ascentlint, veriblelint, verilator, dc."))
+              "other flows. Possible tools include: vcs, questa,"
+              "xcelium, ascentlint, verixcdc, mrdc, veriblelint,"
+              "verilator, dc."))
 
     parser.add_argument("--list",
                         "-l",
                         nargs="*",
                         metavar='CAT',
                         choices=_LIST_CATEGORIES,
-                        help=('Parse the the given .hjson config file, list '
+                        help=('Parse the given .hjson config file, list '
                               'the things that can be run, then exit. The '
                               'list can be filtered with a space-separated '
                               'of categories from: {}.'.format(
@@ -311,6 +337,11 @@ def parse_args():
                       help=('Prepend this string when running each tool '
                             'command.'))
 
+    disg.add_argument("--local",
+                      action='store_true',
+                      help=('Force jobs to be dispatched locally onto user\'s '
+                            'machine.'))
+
     disg.add_argument("--remote",
                       action='store_true',
                       help=('Trigger copying of the repo to scratch area.'))
@@ -322,7 +353,8 @@ def parse_args():
                       help=('Run only up to N builds/tests at a time. '
                             'Default value 16, unless the DVSIM_MAX_PARALLEL '
                             'environment variable is set, in which case that '
-                            'is used.'))
+                            'is used. Only applicable when launching jobs '
+                            'locally.'))
 
     pathg = parser.add_argument_group('File management')
 
@@ -395,6 +427,25 @@ def parse_args():
                         help=('The options for each build_mode in this list '
                               'are applied to all build and run targets.'))
 
+    buildg.add_argument("--build-timeout-mins",
+                        type=int,
+                        metavar="MINUTES",
+                        help=('Wall-clock timeout for builds in minutes: if '
+                              'the build takes longer it will be killed. If '
+                              'GUI mode is enabled, this timeout mechanism will '
+                              'be disabled.'))
+
+    disg.add_argument("--gui",
+                      action='store_true',
+                      help=('Run the flow in GUI mode instead of the batch '
+                            'mode.'))
+
+    disg.add_argument("--interactive",
+                      action='store_true',
+                      help=('Run the job in non-GUI interactive mode '
+                            'accepting manual user inputs and displaying the '
+                            'tool outputs transparently.'))
+
     rung = parser.add_argument_group('Options for running')
 
     rung.add_argument("--run-only",
@@ -438,6 +489,22 @@ def parse_args():
                             "tests are automatically rerun with waves "
                             "enabled."))
 
+    rung.add_argument("--run-timeout-mins",
+                      type=int,
+                      metavar="MINUTES",
+                      help=('Wall-clock timeout for runs in minutes: if '
+                            'the run takes longer it will be killed. If '
+                            'GUI mode is enabled, this timeout mechanism will '
+                            'be disabled.'))
+
+    rung.add_argument("--run-timeout-multiplier",
+                      type=float,
+                      metavar="MULTIPLIER",
+                      help=('Multiplier for wall-clock run timeout as a '
+                            'floating point number: typical use is to '
+                            'uniformly magnify timeout when running '
+                            'gate-level or foundry tests.'))
+
     rung.add_argument("--verbosity",
                       "-v",
                       choices=['n', 'l', 'm', 'h', 'f', 'd'],
@@ -446,7 +513,16 @@ def parse_args():
                             '(l), medium (m), high (h), full (f) or debug (d).'
                             ' The default value is set in config files.'))
 
-    seedg = parser.add_argument_group('Test seeds')
+    seedg = parser.add_argument_group('Build / test seeds')
+
+    seedg.add_argument("--build-seed",
+                       nargs="?",
+                       type=int,
+                       const=random.getrandbits(256),
+                       metavar="S",
+                       help=('Randomize the build. Uses the seed value passed '
+                             'an additional argument, else it randomly picks '
+                             'a 256-bit unsigned integer.'))
 
     seedg.add_argument("--seeds",
                        "-s",
@@ -473,7 +549,7 @@ def parse_args():
 
     seedg.add_argument("--reseed-multiplier",
                        "-rx",
-                       type=int,
+                       type=parse_reseed_multiplier,
                        default=1,
                        metavar="N",
                        help=('Scale each reseed value in the test '
@@ -484,17 +560,12 @@ def parse_args():
 
     waveg = parser.add_argument_group('Dumping waves')
 
-    waveg.add_argument(
-        "--waves",
-        "-w",
-        nargs="?",
-        choices=["default", "fsdb", "shm", "vpd", "vcd", "evcd", "fst"],
-        const="default",
-        help=("Enable dumping of waves. It takes an optional "
-              "argument to pick the desired wave format. If "
-              "the optional argument is not supplied, it picks "
-              "whatever is the default for the chosen tool. "
-              "By default, dumping waves is not enabled."))
+    waveg.add_argument("--waves",
+                       "-w",
+                       choices=["fsdb", "shm", "vpd", "vcd", "evcd", "fst"],
+                       help=("Enable dumping of waves. It takes an "
+                             "argument to pick the desired wave format."
+                             "By default, dumping waves is not enabled."))
 
     waveg.add_argument("--max-waves",
                        "-mw",
@@ -504,6 +575,12 @@ def parse_args():
                        help=('Only dump waves for the first N tests run. This '
                              'includes both tests scheduled for run and those '
                              'that are automatically rerun.'))
+
+    waveg.add_argument("--dump-script",
+                       "-ds",
+                       help=('Use user define custom dump script file'
+                             'The custom file should be located in {proj_root}'
+                             'Default file is {proj_root}/hw/dv/tools/sim.tcl'))
 
     covg = parser.add_argument_group('Generating simulation coverage')
 
@@ -569,6 +646,14 @@ def parse_args():
         print(version)
         sys.exit()
 
+    # Check conflicts
+    # interactive and remote, r
+    if args.interactive and args.remote:
+        log.error("--interactive and --remote cannot be set together")
+        sys.exit()
+    if args.interactive and args.reseed != 1:
+        args.reseed = 1
+
     # We want the --list argument to default to "all categories", but allow
     # filtering. If args.list is None, then --list wasn't supplied. If it is
     # [], then --list was supplied with no further arguments and we want to
@@ -588,12 +673,12 @@ def main():
     args = parse_args()
 
     # Add log level 'VERBOSE' between INFO and DEBUG
-    log.addLevelName(utils.VERBOSE, 'VERBOSE')
+    log.addLevelName(VERBOSE, 'VERBOSE')
 
     log_format = '%(levelname)s: [%(module)s] %(message)s'
     log_level = log.INFO
     if args.verbose == "default":
-        log_level = utils.VERBOSE
+        log_level = VERBOSE
     elif args.verbose == "debug":
         log_level = log.DEBUG
     log.basicConfig(format=log_format, level=log_level)
@@ -606,10 +691,15 @@ def main():
     if args.publish:
         args.map_full_testplan = True
 
-    args.scratch_root = resolve_scratch_root(args.scratch_root)
     args.branch = resolve_branch(args.branch)
     proj_root_src, proj_root = resolve_proj_root(args)
+    args.scratch_root = resolve_scratch_root(args.scratch_root, proj_root)
     log.info("[proj_root]: %s", proj_root)
+
+    # Create an empty FUSESOC_IGNORE file in scratch_root. This ensures that
+    # any fusesoc invocation from a job won't search within scratch_root for
+    # core files.
+    (Path(args.scratch_root) / 'FUSESOC_IGNORE').touch()
 
     args.cfg = os.path.abspath(args.cfg)
     if args.remote:
@@ -617,36 +707,29 @@ def main():
         args.cfg = os.path.join(proj_root, cfg_path)
 
     # Add timestamp to args that all downstream objects can use.
-    # Static variables - indicate timestamp.
-    ts_format_long = "%A %B %d %Y %I:%M:%S%p UTC"
-    ts_format = "%a.%m.%d.%y__%I.%M.%S%p"
     curr_ts = datetime.datetime.utcnow()
-    timestamp_long = curr_ts.strftime(ts_format_long)
-    timestamp = curr_ts.strftime(ts_format)
-    setattr(args, "ts_format_long", ts_format_long)
-    setattr(args, "ts_format", ts_format)
-    setattr(args, "timestamp_long", timestamp_long)
-    setattr(args, "timestamp", timestamp)
+    setattr(args, "timestamp_long", curr_ts.strftime(TS_FORMAT_LONG))
+    setattr(args, "timestamp", curr_ts.strftime(TS_FORMAT))
 
-    # Register the seeds from command line with RunTest class.
-    Deploy.RunTest.seeds = args.seeds
+    # Register the seeds from command line with the RunTest class.
+    RunTest.seeds = args.seeds
+
     # If we are fixing a seed value, no point in tests having multiple reseeds.
     if args.fixed_seed:
         args.reseed = 1
-    Deploy.RunTest.fixed_seed = args.fixed_seed
+    RunTest.fixed_seed = args.fixed_seed
 
     # Register the common deploy settings.
-    Deploy.Deploy.print_interval = args.print_interval
-    Deploy.Deploy.max_parallel = args.max_parallel
-    Deploy.Deploy.max_odirs = args.max_odirs
+    Timer.print_interval = args.print_interval
+    LocalLauncher.LocalLauncher.max_parallel = args.max_parallel
+    SgeLauncher.SgeLauncher.max_parallel = args.max_parallel
+    Launcher.Launcher.max_odirs = args.max_odirs
+    LauncherFactory.set_launcher_type(args.local)
 
     # Build infrastructure from hjson file and create the list of items to
     # be deployed.
     global cfg
     cfg = make_cfg(args.cfg, args, proj_root)
-
-    # Handle Ctrl-C exit.
-    signal(SIGINT, sigint_handler)
 
     # List items available for run if --list switch is passed, and exit.
     if args.list is not None:
@@ -672,20 +755,21 @@ def main():
         sys.exit(0)
 
     # Deploy the builds and runs
-    if args.items != []:
+    if args.items:
         # Create deploy objects.
         cfg.create_deploy_objects()
-        cfg.deploy_objects()
+        results = cfg.deploy_objects()
 
         # Generate results.
-        cfg.gen_results()
+        cfg.gen_results(results)
 
         # Publish results
         if args.publish:
             cfg.publish_results()
 
     else:
-        log.info("No items specified to be run.")
+        log.error("Nothing to run!")
+        sys.exit(1)
 
     # Exit with non-zero status if there were errors or failures.
     if cfg.has_errors():

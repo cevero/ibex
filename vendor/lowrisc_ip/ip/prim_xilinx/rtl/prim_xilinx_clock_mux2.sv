@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors.
+// Copyright lowRISC contributors (OpenTitan project).
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -20,11 +20,11 @@ module prim_xilinx_clock_mux2 #(
     // ug953-vivado-7series-libraries.pdf
     // ug974-vivado-ultrascale-libraries.pdf
     BUFGMUX bufgmux_i (
-      .S  ( sel_i  ),
-      .I0 ( clk0_i ),
-      .I1 ( clk1_i ),
-      .O  ( clk_o  )
-      );
+      .S (sel_i),
+      .I0(clk0_i),
+      .I1(clk1_i),
+      .O (clk_o)
+    );
   end
 
   // make sure sel is never X (including during reset)
